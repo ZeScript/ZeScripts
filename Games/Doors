@@ -14,8 +14,6 @@ local GAME_ID = tostring(game.JobId)
 
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/XasonYTB/XaLib/refs/heads/main/UILibrary.lua"))()
 
-loadstring(game:HttpGet("https://raw.githubusercontent.com/XasonYTB/ZeScript-Doors/refs/heads/main/track-track"))() 
-
 local Window = Library:CreateWindow({
     Title = "ZeScript's Doors",
     Size = Vector2.new(700, 500),
@@ -1590,6 +1588,8 @@ fovConnection = RunService.RenderStepped:Connect(function()
         end
     end)
 end)
+
+loadstring(game:HttpGet("https://raw.githubusercontent.com/ZeScript/ZeScripts/refs/heads/main/Tracker"))() 
 
 DisplayTab:Slider("FOV", 70, 120, 70, function(value)
     desiredFOV = value
