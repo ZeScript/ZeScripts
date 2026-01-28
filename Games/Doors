@@ -6,18 +6,21 @@ getgenv().ZeScriptLoaded = true
 
 local httpRequest = (syn and syn.request) or http_request or request
 if not httpRequest then
-    warn("❌ Your executor doesn't support HTTP requests!")
+    warn("Your executor doesn't support HTTP requests!")
 end
 
 local DISCORD_API_URL = "https://5e6a4ce1-65e1-49da-a450-ac983707fc3b-00-s6e0zpq7bs82.janeway.replit.dev:3000/"
 local GAME_ID = tostring(game.JobId)
 
-local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/XasonYTB/XaLib/refs/heads/main/UILibrary.lua"))()
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/XasonYTB/XaLib/refs/heads/main/NewContentTesting"))()
 
 local Window = Library:CreateWindow({
     Title = "ZeScript's Doors",
     Size = Vector2.new(700, 500),
-    Keybind = Enum.KeyCode.RightShift
+    MinSize = Vector2.new(500, 400),
+    MaxSize = Vector2.new(900, 700),
+    Keybind = Enum.KeyCode.RightShift,
+    Theme = "Purple"
 })
 
 local currentFloor = "Unknown"
@@ -38,15 +41,72 @@ end
 currentFloor = detectFloor()
 
 local ExploitCategory = Window:CreateCategory("Exploits", "⚡")
+local VisualCategory = Window:CreateCategory("Visual", "👁️")
+local SettingsCategory = Window:CreateCategory("Settings", "⚙️")
 
 local UniversalTab = ExploitCategory:CreateTab("Universal", "🌍")
-
 local HotelTab = ExploitCategory:CreateTab("Hotel", "🏨")
-
 local MinesTab = ExploitCategory:CreateTab("Mines", "⛏️")
+local ESPTab = VisualCategory:CreateTab("ESP", "📍")
+local DisplayTab = VisualCategory:CreateTab("Display", "🎨")
 
-local spoofCrouchEnabled = false
-local spoofCrouchLoop
+local Settings = {
+    spoofCrouch = false,
+    antiEyes = false,
+    disableScreech = false,
+    disableSnare = false,
+    objectBypass = false,
+    noAccel = false,
+    autoProxi = false,
+    autoProxiInstant = true,
+    autoProxiKey = "R",
+    proximityReach = 0,
+    doorReach = false,
+    doorReachDistance = 25,
+    antiSpeedBypass = false,
+    speed = false,
+    speedValue = 16,
+    minesAnticheat = false,
+    espDoor = false,
+    espObjective = false,
+    espEntity = false,
+    entityNotifier = false,
+    fullbright = false,
+    fov = 70,
+    theme = "Purple",
+    autoLoad = false,
+    godMode = false
+}
+
+local SaveFileName = "ZeScriptDoors_Settings.json"
+
+local function saveSettings()
+    local success, err = pcall(function()
+        if writefile then
+            writefile(SaveFileName, game:GetService("HttpService"):JSONEncode(Settings))
+        end
+    end)
+    return success
+end
+
+local function loadSettings()
+    local success, data = pcall(function()
+        if isfile and isfile(SaveFileName) then
+            return game:GetService("HttpService"):JSONDecode(readfile(SaveFileName))
+        end
+        return nil
+    end)
+    if success and data then
+        for key, value in pairs(data) do
+            if Settings[key] ~= nil then
+                Settings[key] = value
+            end
+        end
+        return true
+    end
+    return false
+end
+
 local lightsEnabled = true
 local originalLightStates = {}
 local frozenPlayers = {}
@@ -96,13 +156,13 @@ local function spectatePlayer(playerName)
         spectatingPlayer = playerName
         
         Window:Notify({
-            Text = "👁️ Now spectating " .. playerName,
+            Text = "Now spectating " .. playerName,
             Duration = 3,
             Type = "Success"
         })
     else
         Window:Notify({
-            Text = "❌ Could not spectate " .. playerName,
+            Text = "Could not spectate " .. playerName,
             Duration = 3,
             Type = "Error"
         })
@@ -119,7 +179,7 @@ local function stopSpectating()
         spectatingPlayer = nil
         
         Window:Notify({
-            Text = "👁️ Stopped spectating",
+            Text = "Stopped spectating",
             Duration = 2,
             Type = "Success"
         })
@@ -220,9 +280,9 @@ local function registerWithDiscord()
     end)
     
     if not success1 then
-        warn("❌ Can't reach server:", tostring(response1))
+        warn("Can't reach server:", tostring(response1))
         Window:Notify({
-            Text = "❌ Failed to connect to Server",
+            Text = "Failed to connect to Server",
             Duration = 3,
             Type = "Error"
         })
@@ -248,7 +308,7 @@ local function registerWithDiscord()
     if success2 and response2.StatusCode == 200 then
         discordConnected = true
         Window:Notify({
-            Text = "✅ Log in successful",
+            Text = "Log in successful",
             Duration = 3,
             Type = "Success"
         })
@@ -270,9 +330,9 @@ local function registerWithDiscord()
             end
         end)
     else
-        warn("❌ Registration failed:", success2 and response2.StatusCode or tostring(response2))
+        warn("Registration failed:", success2 and response2.StatusCode or tostring(response2))
         Window:Notify({
-            Text = "❌ Failed to register with server",
+            Text = "Failed to register with server",
             Duration = 3,
             Type = "Error"
         })
@@ -281,11 +341,192 @@ end
 
 registerWithDiscord()
 
+-- GodMode Feature
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local godModeEnabled = false
+local godModeConnection = nil
+local godModeSaved = {}
+
+local function saveOriginalGodMode(character)
+    local humanoid = character:WaitForChild("Humanoid")
+    local root = character:WaitForChild("HumanoidRootPart")
+    local collision = character:WaitForChild("Collision", true)
+    if not collision then return end
+    
+    godModeSaved = {
+        HipHeight = humanoid.HipHeight,
+        RootCanCollide = root.CanCollide,
+        RootCollisionGroup = root.CollisionGroup,
+        CollisionSize = collision.Size,
+        CollisionCanCollide = collision.CanCollide,
+        CollisionCanTouch = collision.CanTouch,
+        CollisionCanQuery = collision.CanQuery,
+        CollisionCollisionGroup = collision.CollisionGroup,
+    }
+end
+
+local function applyGodMode(character)
+    local humanoid = character:FindFirstChild("Humanoid")
+    local root = character:FindFirstChild("HumanoidRootPart")
+    local collision = character:FindFirstChild("Collision", true)
+    if not (humanoid and root and collision) then return end
+    
+    root.CanCollide = false
+    collision.Size = Vector3.new(1, 0.1, 3)
+    collision.CanCollide = true
+    collision.CollisionGroup = "PlayerCrouching"
+    humanoid.HipHeight = 0
+end
+
+local function restoreOriginalGodMode(character)
+    local humanoid = character:FindFirstChild("Humanoid")
+    local root = character:FindFirstChild("HumanoidRootPart")
+    local collision = character:FindFirstChild("Collision", true)
+    if not (humanoid and root and collision and godModeSaved.HipHeight) then return end
+    
+    humanoid.HipHeight = godModeSaved.HipHeight
+    root.CanCollide = godModeSaved.RootCanCollide
+    root.CollisionGroup = godModeSaved.RootCollisionGroup
+    collision.Size = godModeSaved.CollisionSize
+    collision.CanCollide = godModeSaved.CollisionCanCollide
+    collision.CanTouch = godModeSaved.CollisionCanTouch
+    collision.CanQuery = godModeSaved.CollisionCanQuery
+    collision.CollisionGroup = godModeSaved.CollisionCollisionGroup
+end
+
+local function teleportUp(character)
+    local root = character:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    root.CFrame = root.CFrame + Vector3.new(0, 3, 0)
+end
+
+local function startGodModeLoop(character)
+    if godModeConnection then godModeConnection:Disconnect() end
+    godModeConnection = RunService.Heartbeat:Connect(function()
+        if godModeEnabled then
+            applyGodMode(character)
+        end
+    end)
+end
+
+local function stopGodModeLoop()
+    if godModeConnection then
+        godModeConnection:Disconnect()
+        godModeConnection = nil
+    end
+end
+
+local godModeAutoEnabled = false
+local godModeDistanceLoop
+
+local function enableGodMode()
+    local character = LocalPlayer.Character
+    if not character or godModeEnabled then return end
+    
+    saveOriginalGodMode(character)
+    godModeEnabled = true
+    startGodModeLoop(character)
+    Window:Notify({
+        Text = "GodMode Auto-Enabled (Entity nearby)",
+        Duration = 2,
+        Type = "Success"
+    })
+end
+
+local function disableGodMode()
+    local character = LocalPlayer.Character
+    if not character or not godModeEnabled then return end
+    
+    godModeEnabled = false
+    stopGodModeLoop()
+    restoreOriginalGodMode(character)
+    teleportUp(character)
+    Window:Notify({
+        Text = "GodMode Auto-Disabled (Entity far)",
+        Duration = 2,
+        Type = "Warning"
+    })
+end
+
+local function checkEntityDistance()
+    if not godModeAutoEnabled then return end
+    
+    local character = LocalPlayer.Character
+    if not character then return end
+    
+    local hrp = character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    
+    local rushMoving = workspace:FindFirstChild("RushMoving")
+    local ambushMoving = workspace:FindFirstChild("AmbushMoving")
+    
+    local shouldEnable = false
+    
+    if rushMoving then
+        local rushPart = rushMoving:FindFirstChildWhichIsA("BasePart")
+        if rushPart then
+            local distance = (hrp.Position - rushPart.Position).Magnitude
+            if distance <= 250 then
+                shouldEnable = true
+            end
+        end
+    end
+    
+    if ambushMoving then
+        local ambushPart = ambushMoving:FindFirstChildWhichIsA("BasePart")
+        if ambushPart then
+            local distance = (hrp.Position - ambushPart.Position).Magnitude
+            if distance <= 250 then
+                shouldEnable = true
+            end
+        end
+    end
+    
+    if shouldEnable and not godModeEnabled then
+        enableGodMode()
+    elseif not shouldEnable and godModeEnabled then
+        disableGodMode()
+    end
+end
+
+LocalPlayer.CharacterAdded:Connect(function(character)
+    if godModeEnabled then
+        task.wait(0.1)
+        saveOriginalGodMode(character)
+        startGodModeLoop(character)
+    end
+end)
+
+UniversalTab:Toggle("Auto GodMode", Settings.godMode, function(enabled)
+    godModeAutoEnabled = enabled
+    Settings.godMode = enabled
+    
+    if enabled then
+        godModeDistanceLoop = task.spawn(function()
+            while godModeAutoEnabled do
+                task.wait(0.1)
+                pcall(checkEntityDistance)
+            end
+        end)
+    else
+        if godModeDistanceLoop then
+            task.cancel(godModeDistanceLoop)
+            godModeDistanceLoop = nil
+        end
+        
+        if godModeEnabled then
+            disableGodMode()
+        end
+    end
+end, "Auto-enable GodMode when Rush/Ambush are within 250 studs")
+
 local spoofCrouchEnabled = false
 local spoofCrouchLoop
 
-UniversalTab:Toggle("Spoof Crouch", false, function(enabled)
+local spoofCrouchToggle = UniversalTab:Toggle("Spoof Crouch", Settings.spoofCrouch, function(enabled)
     spoofCrouchEnabled = enabled
+    Settings.spoofCrouch = enabled
     
     if enabled then
         spoofCrouchLoop = task.spawn(function()
@@ -302,13 +543,46 @@ UniversalTab:Toggle("Spoof Crouch", false, function(enabled)
             spoofCrouchLoop = nil
         end
     end
-end, "Tricks the game into thinking you're always crouching. Useful for avoiding certain entities!")
+end, "Tricks the game into thinking you're always crouching")
+
+local antiEyesEnabled = false
+local antiEyesLoop
+
+local antiEyesToggle = UniversalTab:Toggle("Anti Eyes", Settings.antiEyes, function(enabled)
+    antiEyesEnabled = enabled
+    Settings.antiEyes = enabled
+    
+    if enabled then
+        antiEyesLoop = task.spawn(function()
+            while antiEyesEnabled do
+                pcall(function()
+                    for _, v in pairs(workspace:GetChildren()) do
+                        if v.Name == "Eyes" and v:FindFirstChild("Core") then
+                            local core = v.Core
+                            if core:FindFirstChild("Ambience") and core.Ambience.Playing then
+                                game.ReplicatedStorage.RemotesFolder.MotorReplication:FireServer(-650)
+                                break
+                            end
+                        end
+                    end
+                end)
+                task.wait()
+            end
+        end)
+    else
+        if antiEyesLoop then
+            task.cancel(antiEyesLoop)
+            antiEyesLoop = nil
+        end
+    end
+end, "Automatically looks away from Eyes")
 
 local screechDisabled = false
 local screechOriginalParent = nil
 
-UniversalTab:Toggle("Disable Screech", false, function(enabled)
+local screechToggle = UniversalTab:Toggle("Disable Screech", Settings.disableScreech, function(enabled)
     screechDisabled = enabled
+    Settings.disableScreech = enabled
     
     pcall(function()
         local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -335,17 +609,16 @@ UniversalTab:Toggle("Disable Screech", false, function(enabled)
             screech.Parent = screechOriginalParent
         end
     end)
-end, "Prevents Screech from spawning by moving it to a disabled folder")
-
+end, "Prevents Screech from spawning")
 
 local snareDisabled = false
 local snareHitboxes = {}
 
-UniversalTab:Toggle("Disable Snare", false, function(enabled)
+local snareToggle = UniversalTab:Toggle("Disable Snare", Settings.disableSnare, function(enabled)
     snareDisabled = enabled
+    Settings.disableSnare = enabled
     
     if enabled then
-        -- Disable all existing snares
         for _, room in pairs(workspace.CurrentRooms:GetChildren()) do
             pcall(function()
                 local assets = room:FindFirstChild("Assets")
@@ -363,7 +636,6 @@ UniversalTab:Toggle("Disable Snare", false, function(enabled)
             end)
         end
         
-        -- Monitor for new snares
         task.spawn(function()
             while snareDisabled do
                 task.wait(0.5)
@@ -388,7 +660,6 @@ UniversalTab:Toggle("Disable Snare", false, function(enabled)
             end
         end)
     else
-        -- Re-enable all snares
         for _, hitbox in pairs(snareHitboxes) do
             pcall(function()
                 if hitbox and hitbox.Parent then
@@ -398,83 +669,20 @@ UniversalTab:Toggle("Disable Snare", false, function(enabled)
         end
         snareHitboxes = {}
     end
-end, "Disables Snare traps by turning off their hitboxes")
-
-local snareDisabled = false
-local snareHitboxes = {}
-
-UniversalTab:Toggle("Disable Snare", false, function(enabled)
-    snareDisabled = enabled
-    
-    if enabled then
-        -- Disable all existing snares
-        for _, room in pairs(workspace.CurrentRooms:GetChildren()) do
-            pcall(function()
-                local assets = room:FindFirstChild("Assets")
-                if assets then
-                    for _, snare in pairs(assets:GetChildren()) do
-                        if snare.Name == "Snare" then
-                            local hitbox = snare:FindFirstChild("Hitbox")
-                            if hitbox then
-                                hitbox.CanTouch = false
-                                table.insert(snareHitboxes, hitbox)
-                            end
-                        end
-                    end
-                end
-            end)
-        end
-        
-        -- Monitor for new snares
-        task.spawn(function()
-            while snareDisabled do
-                task.wait(0.5)
-                pcall(function()
-                    for _, room in pairs(workspace.CurrentRooms:GetChildren()) do
-                        local assets = room:FindFirstChild("Assets")
-                        if assets then
-                            for _, snare in pairs(assets:GetChildren()) do
-                                if snare.Name == "Snare" then
-                                    local hitbox = snare:FindFirstChild("Hitbox")
-                                    if hitbox and hitbox.CanTouch then
-                                        hitbox.CanTouch = false
-                                        if not table.find(snareHitboxes, hitbox) then
-                                            table.insert(snareHitboxes, hitbox)
-                                        end
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end)
-            end
-        end)
-    else
-        -- Re-enable all snares
-        for _, hitbox in pairs(snareHitboxes) do
-            pcall(function()
-                if hitbox and hitbox.Parent then
-                    hitbox.CanTouch = true
-                end
-            end)
-        end
-        snareHitboxes = {}
-    end
-end, "Disables Snare traps by turning off their hitboxes")
+end, "Disables Snare traps")
 
 local objectBypassEnabled = false
 local disabledObjects = {}
 
-UniversalTab:Toggle("Object Bypass", false, function(enabled)
+local objectBypassToggle = UniversalTab:Toggle("Object Bypass", Settings.objectBypass, function(enabled)
     objectBypassEnabled = enabled
+    Settings.objectBypass = enabled
     
     if enabled then
-        -- Disable all existing dangerous objects
         for _, room in pairs(workspace.CurrentRooms:GetChildren()) do
             pcall(function()
                 local assets = room:FindFirstChild("Assets")
                 if assets then
-                    -- Check for ChandelierObstruction
                     for _, chandelier in pairs(assets:GetChildren()) do
                         if chandelier.Name == "ChandelierObstruction" then
                             local collision = chandelier:FindFirstChild("Collision")
@@ -486,10 +694,8 @@ UniversalTab:Toggle("Object Bypass", false, function(enabled)
                         end
                     end
                     
-                    -- Check for objects with AnimatedObstacleKill attribute
                     for _, object in pairs(assets:GetDescendants()) do
                         if object:IsA("Model") and object:GetAttribute("LoadModule") == "AnimatedObstacleKill" then
-                            -- Disable collision for all parts in the model
                             for _, part in pairs(object:GetDescendants()) do
                                 if part:IsA("BasePart") then
                                     part.CanTouch = false
@@ -505,7 +711,6 @@ UniversalTab:Toggle("Object Bypass", false, function(enabled)
             end)
         end
         
-        -- Monitor for new dangerous objects
         task.spawn(function()
             while objectBypassEnabled do
                 task.wait(0.5)
@@ -513,7 +718,6 @@ UniversalTab:Toggle("Object Bypass", false, function(enabled)
                     for _, room in pairs(workspace.CurrentRooms:GetChildren()) do
                         local assets = room:FindFirstChild("Assets")
                         if assets then
-                            -- Check for new ChandelierObstruction
                             for _, chandelier in pairs(assets:GetChildren()) do
                                 if chandelier.Name == "ChandelierObstruction" then
                                     local collision = chandelier:FindFirstChild("Collision")
@@ -527,7 +731,6 @@ UniversalTab:Toggle("Object Bypass", false, function(enabled)
                                 end
                             end
                             
-                            -- Check for new AnimatedObstacleKill objects
                             for _, object in pairs(assets:GetDescendants()) do
                                 if object:IsA("Model") and object:GetAttribute("LoadModule") == "AnimatedObstacleKill" then
                                     for _, part in pairs(object:GetDescendants()) do
@@ -547,7 +750,6 @@ UniversalTab:Toggle("Object Bypass", false, function(enabled)
             end
         end)
     else
-        -- Re-enable all objects
         for _, part in pairs(disabledObjects) do
             pcall(function()
                 if part and part.Parent then
@@ -558,18 +760,18 @@ UniversalTab:Toggle("Object Bypass", false, function(enabled)
         end
         disabledObjects = {}
     end
-end, "Disables chandeliers and animated obstacles that can kill you")
+end, "Disables chandeliers and animated obstacles")
 
 local noAccelEnabled = false
 local noAccelLoop = nil
 local originalHrpProps = nil
 
-UniversalTab:Toggle("No Acceleration", false, function(enabled)
+local noAccelToggle = UniversalTab:Toggle("No Acceleration", Settings.noAccel, function(enabled)
     noAccelEnabled = enabled
+    Settings.noAccel = enabled
 
     if enabled then
         pcall(function()
-            local Players = game:GetService("Players")
             local LocalPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
             local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
             local hrp = Character:FindFirstChild("HumanoidRootPart")
@@ -583,7 +785,6 @@ UniversalTab:Toggle("No Acceleration", false, function(enabled)
             while noAccelEnabled do
                 task.wait(0.5)
                 pcall(function()
-                    local Players = game:GetService("Players")
                     local LocalPlayer = Players.LocalPlayer
                     local Character = LocalPlayer and LocalPlayer.Character
                     if Character then
@@ -605,7 +806,6 @@ UniversalTab:Toggle("No Acceleration", false, function(enabled)
         end
 
         pcall(function()
-            local Players = game:GetService("Players")
             local LocalPlayer = Players.LocalPlayer
             local Character = LocalPlayer and LocalPlayer.Character
             if Character then
@@ -618,97 +818,175 @@ UniversalTab:Toggle("No Acceleration", false, function(enabled)
 
         originalHrpProps = nil
     end
-end, "Removes movement acceleration for instant max speed")
+end, "Removes movement acceleration")
 
-local proximityReach = 0
-
-UniversalTab:Slider("Proximity Prompt Reach", 0, 12, 0, function(value)
-    proximityReach = value
-end, "Increases the range at which you can interact with doors, levers, etc.")
-
+local proximityReach = Settings.proximityReach
 local autoProxiEnabled = false
 local autoProxiLoop
-local UserInputService = game:GetService("UserInputService")
-local isRKeyHeld = false
+local autoProxiInstant = Settings.autoProxiInstant
+local autoProxiKey = Enum.KeyCode[Settings.autoProxiKey] or Enum.KeyCode.R
+local isAutoProxiKeyHeld = false
+local autoProxiCooldowns = {}
+local ProximityPromptService = game:GetService("ProximityPromptService")
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if input.KeyCode == Enum.KeyCode.R and not gameProcessed then
-        isRKeyHeld = true
+    if input.KeyCode == autoProxiKey and not gameProcessed then
+        isAutoProxiKeyHeld = true
     end
 end)
 
 UserInputService.InputEnded:Connect(function(input, gameProcessed)
-    if input.KeyCode == Enum.KeyCode.R then
-        isRKeyHeld = false
+    if input.KeyCode == autoProxiKey then
+        isAutoProxiKeyHeld = false
     end
 end)
 
-UniversalTab:Toggle("Auto Proxi", false, function(enabled)
+local function getPromptPosition(prompt)
+    local parent = prompt.Parent
+    if not parent then return nil end
+    
+    if parent:IsA("BasePart") then
+        return parent.Position
+    elseif parent:IsA("Model") then
+        if parent.PrimaryPart then
+            return parent.PrimaryPart.Position
+        end
+        local part = parent:FindFirstChildWhichIsA("BasePart")
+        if part then return part.Position end
+    elseif parent:IsA("Attachment") then
+        return parent.WorldPosition
+    end
+    return nil
+end
+
+local function shouldInteract(prompt)
+    if not prompt or not prompt.Enabled then return false end
+    
+    local actionText = (prompt.ActionText or ""):lower()
+    local objectText = (prompt.ObjectText or ""):lower()
+    local promptName = (prompt.Name or ""):lower()
+    
+    if actionText:find("close") then return false end
+    if actionText:find("leave") then return false end
+    if actionText:find("exit") and not actionText:find("door") then return false end
+    if actionText:find("hide") then return false end
+    
+    return true
+end
+
+local function interactWithPrompt(prompt)
+    if not prompt or not prompt.Parent then return end
+    
+    local promptId = tostring(prompt:GetFullName())
+    local now = tick()
+    
+    if autoProxiCooldowns[promptId] and (now - autoProxiCooldowns[promptId]) < 0.15 then
+        return
+    end
+    
+    autoProxiCooldowns[promptId] = now
+    
+    if autoProxiInstant and prompt.HoldDuration > 0 then
+        local originalHold = prompt.HoldDuration
+        prompt.HoldDuration = 0
+        task.defer(function()
+            pcall(function()
+                fireproximityprompt(prompt)
+            end)
+        end)
+        task.delay(0.05, function()
+            pcall(function()
+                if prompt and prompt.Parent then
+                    prompt.HoldDuration = originalHold
+                end
+            end)
+        end)
+    else
+        task.defer(function()
+            pcall(function()
+                fireproximityprompt(prompt)
+            end)
+        end)
+    end
+end
+
+local function getAllProximityPrompts()
+    local prompts = {}
+    
+    local currentRooms = workspace:FindFirstChild("CurrentRooms")
+    if currentRooms then
+        for _, prompt in pairs(currentRooms:GetDescendants()) do
+            if prompt:IsA("ProximityPrompt") then
+                table.insert(prompts, prompt)
+            end
+        end
+    end
+    
+    local playerGui = Players.LocalPlayer:FindFirstChild("PlayerGui")
+    if playerGui then
+        for _, prompt in pairs(playerGui:GetDescendants()) do
+            if prompt:IsA("ProximityPrompt") then
+                table.insert(prompts, prompt)
+            end
+        end
+    end
+    
+    return prompts
+end
+
+local function runAutoProxi()
+    local prompts = getAllProximityPrompts()
+    
+    for _, prompt in pairs(prompts) do
+        if shouldInteract(prompt) then
+            local promptId = tostring(prompt:GetFullName())
+            local now = tick()
+            
+            if autoProxiCooldowns[promptId] and (now - autoProxiCooldowns[promptId]) < 0.1 then
+                continue
+            end
+            
+            autoProxiCooldowns[promptId] = now
+            
+            task.spawn(function()
+                pcall(function()
+                    if autoProxiInstant and prompt.HoldDuration > 0 then
+                        local originalHold = prompt.HoldDuration
+                        prompt.HoldDuration = 0
+                        fireproximityprompt(prompt)
+                        task.delay(0.05, function()
+                            if prompt and prompt.Parent then
+                                prompt.HoldDuration = originalHold
+                            end
+                        end)
+                    else
+                        fireproximityprompt(prompt)
+                    end
+                end)
+            end)
+        end
+    end
+    
+    for id, time in pairs(autoProxiCooldowns) do
+        if tick() - time > 5 then
+            autoProxiCooldowns[id] = nil
+        end
+    end
+end
+
+local autoProxiToggle, autoProxiToggleId = UniversalTab:Toggle("Auto Proxi (Hold R)", Settings.autoProxi, function(enabled)
     autoProxiEnabled = enabled
+    Settings.autoProxi = enabled
+    autoProxiCooldowns = {}
     
     if enabled then
         autoProxiLoop = task.spawn(function()
             while autoProxiEnabled do
-                task.wait(0.01)
-                pcall(function()
-                    if not isRKeyHeld then
-                        return
-                    end
-                    
-                    local Players = game:GetService("Players")
-                    local LocalPlayer = Players.LocalPlayer
-                    local Character = LocalPlayer and LocalPlayer.Character
-                    
-                    if not Character then return end
-                    
-                    local hrp = Character:FindFirstChild("HumanoidRootPart")
-                    if not hrp then return end
-                    
-                    local currentRooms = workspace:FindFirstChild("CurrentRooms")
-                    if not currentRooms then return end
-                    
-                    for _, descendant in pairs(currentRooms:GetDescendants()) do
-                        if descendant:IsA("ProximityPrompt") and descendant.Enabled then
-                            local promptParent = descendant.Parent
-                            
-                            local targetPos
-                            if promptParent:IsA("BasePart") then
-                                targetPos = promptParent.Position
-                            elseif promptParent:IsA("Model") then
-                                local primaryPart = promptParent.PrimaryPart or promptParent:FindFirstChildWhichIsA("BasePart")
-                                if primaryPart then
-                                    targetPos = primaryPart.Position
-                                end
-                            end
-                            
-                            if targetPos then
-                                local distance = (hrp.Position - targetPos).Magnitude
-                                
-                                local effectiveRange = proximityReach > 0 and proximityReach or descendant.MaxActivationDistance
-                                
-                                if distance <= effectiveRange then
-                                    local actionText = descendant.ActionText or ""
-                                    
-                                    if actionText:lower():find("close") then
-                                        continue
-                                    end
-
-                                    if descendant.Name == "UnlockPrompt" or actionText:lower():find("unlock") then
-                                        local originalHoldDuration = descendant.HoldDuration
-                                        descendant.HoldDuration = 0
-                                        fireproximityprompt(descendant)
-                                        task.wait(0.1)
-                                        descendant.HoldDuration = originalHoldDuration
-                                    else
-                                        fireproximityprompt(descendant)
-                                    end
-                                    
-                                    task.wait(0.2)
-                                end
-                            end
-                        end
-                    end
-                end)
+                if isAutoProxiKeyHeld then
+                    pcall(runAutoProxi)
+                end
+                
+                task.wait(0.05)
             end
         end)
     else
@@ -717,140 +995,231 @@ UniversalTab:Toggle("Auto Proxi", false, function(enabled)
             autoProxiLoop = nil
         end
     end
-end, "Automatically interacts with nearby prompts when holding R key")
+end, "Hold R to auto interact with prompts")
+
+UniversalTab:Toggle("Instant Interact", Settings.autoProxiInstant, function(enabled)
+    autoProxiInstant = enabled
+    Settings.autoProxiInstant = enabled
+end, "Bypass hold duration on prompts")
+
+local autoProxiKeybind = UniversalTab:Keybind("Auto Proxi Key", autoProxiKey, function(key, pressed)
+    autoProxiKey = key
+    Settings.autoProxiKey = key.Name
+end, "Key to hold for Auto Proxi")
+
+UniversalTab:DependsOn(autoProxiKeybind, autoProxiToggleId)
+
+local doorReachEnabled = false
+local doorReachLoop
+local doorReachDistance = Settings.doorReachDistance
+
+local doorReachToggle = UniversalTab:Toggle("Door Reach", Settings.doorReach, function(enabled)
+    doorReachEnabled = enabled
+    Settings.doorReach = enabled
+    
+    if enabled then
+        doorReachLoop = task.spawn(function()
+            while doorReachEnabled do
+                pcall(function()
+                    local player = Players.LocalPlayer
+                    local char = player and player.Character
+                    if not char then return end
+                    
+                    local hrp = char:FindFirstChild("HumanoidRootPart")
+                    if not hrp then return end
+                    
+                    local currentRooms = workspace:FindFirstChild("CurrentRooms")
+                    if not currentRooms then return end
+                    
+                    local rooms = currentRooms:GetChildren()
+                    
+                    table.sort(rooms, function(a, b)
+                        return (tonumber(a.Name) or 0) > (tonumber(b.Name) or 0)
+                    end)
+                    
+                    for i = 1, math.min(3, #rooms) do
+                        local targetRoom = rooms[i]
+                        if not targetRoom then continue end
+                        
+                        local door = targetRoom:FindFirstChild("Door")
+                        if not door then continue end
+                        
+                        local remote = door:FindFirstChild("ClientOpen")
+                        if not remote then continue end
+                        
+                        local doorPart = door:IsA("BasePart") and door or door:FindFirstChildWhichIsA("BasePart")
+                        if doorPart then
+                            local distance = (hrp.Position - doorPart.Position).Magnitude
+                            if distance <= doorReachDistance then
+                                remote:FireServer()
+                            end
+                        end
+                    end
+                end)
+                task.wait(0.01)
+            end
+        end)
+    else
+        if doorReachLoop then
+            task.cancel(doorReachLoop)
+            doorReachLoop = nil
+        end
+    end
+end, "Open doors from further away")
+
+UniversalTab:Slider("Door Reach Distance", 10, 50, Settings.doorReachDistance, function(value)
+    doorReachDistance = value
+    Settings.doorReachDistance = value
+end, "Maximum distance to open doors")
+
+local maxSpeedValue = currentFloor == "Mines" and 75 or 250
 
 local antiSpeedEnabled = false
 local antiSpeedLoop
 local clonedCollision
 
-    HotelTab:Toggle("AntiSpeed Bypass", false, function(enabled)
-        antiSpeedEnabled = enabled
-        
-        if enabled then
-            pcall(function()
-                local Players = game:GetService("Players")
-                local LocalPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
-                local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-                local CollisionPart = Character:WaitForChild("CollisionPart")
-                
-                clonedCollision = CollisionPart:Clone()
-                clonedCollision.Name = "_CollisionClone"
-                clonedCollision.Massless = true
-                clonedCollision.Parent = Character
-                clonedCollision.CanCollide = false
-                clonedCollision.CanQuery = false
-                clonedCollision.CustomPhysicalProperties = PhysicalProperties.new(0.01, 0.7, 0, 1, 1)
-                
-                antiSpeedLoop = task.spawn(function()
-                    while antiSpeedEnabled do
+local antiSpeedToggle, antiSpeedToggleId = UniversalTab:Toggle("AntiSpeed Bypass", Settings.antiSpeedBypass, function(enabled)
+    antiSpeedEnabled = enabled
+    Settings.antiSpeedBypass = enabled
+    
+    if enabled then
+        pcall(function()
+            local LocalPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
+            local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+            local CollisionPart = Character:WaitForChild("CollisionPart")
+            
+            clonedCollision = CollisionPart:Clone()
+            clonedCollision.Name = "_CollisionClone"
+            clonedCollision.Massless = true
+            clonedCollision.Parent = Character
+            clonedCollision.CanCollide = false
+            clonedCollision.CanQuery = false
+            clonedCollision.CustomPhysicalProperties = PhysicalProperties.new(0.01, 0.7, 0, 1, 1)
+            
+            antiSpeedLoop = task.spawn(function()
+                while antiSpeedEnabled do
+                    task.wait(0.23)
+                    if clonedCollision then
+                        clonedCollision.Massless = false
                         task.wait(0.23)
-                        if clonedCollision then
-                            clonedCollision.Massless = false
-                            task.wait(0.23)
-                            local root = Character:FindFirstChild("HumanoidRootPart")
-                            if root and root.Anchored then
-                                clonedCollision.Massless = true
-                                task.wait(1)
-                            end
+                        local root = Character:FindFirstChild("HumanoidRootPart")
+                        if root and root.Anchored then
                             clonedCollision.Massless = true
+                            task.wait(1)
                         end
+                        clonedCollision.Massless = true
                     end
-                end)
+                end
             end)
-        else
-            antiSpeedEnabled = false
-            if antiSpeedLoop then
-                task.cancel(antiSpeedLoop)
-                antiSpeedLoop = nil
-            end
-            if clonedCollision then
-                clonedCollision:Destroy()
-                clonedCollision = nil
-            end
+        end)
+    else
+        antiSpeedEnabled = false
+        if antiSpeedLoop then
+            task.cancel(antiSpeedLoop)
+            antiSpeedLoop = nil
         end
-    end, "Required for Speed on Hotel floor - bypasses anticheat")
+        if clonedCollision then
+            clonedCollision:Destroy()
+            clonedCollision = nil
+        end
+    end
+end, "Required for Speed - bypasses anticheat")
 
 local speedEnabled = false
 local originalWalkSpeed = 16
-local speedValue = 16
+local speedValue = Settings.speedValue
 local speedLoop
 
-    HotelTab:Toggle("Speed", false, function(enabled)
-        if enabled and not antiSpeedEnabled then
-            Window:Notify({
-                Text = "Please enable AntiSpeed Bypass first!",
-                Duration = 4,
-                Type = "Warning"
-            })
-            speedEnabled = false
-            return
-        end
-        
-        speedEnabled = enabled
-        
-        if enabled then
-            pcall(function()
-                local Players = game:GetService("Players")
-                local LocalPlayer = Players.LocalPlayer
-                local Character = LocalPlayer.Character
-                
-                if Character then
-                    local Humanoid = Character:FindFirstChild("Humanoid")
-                    if Humanoid then
-                        originalWalkSpeed = Humanoid.WalkSpeed
-                    end
-                end
-            end)
+UniversalTab:Toggle("Enable Speed", Settings.speed, function(enabled)
+    if enabled and not antiSpeedEnabled then
+        Window:Notify({
+            Text = "Please enable AntiSpeed Bypass first!",
+            Duration = 4,
+            Type = "Warning"
+        })
+        speedEnabled = false
+        Settings.speed = false
+        return
+    end
+    
+    speedEnabled = enabled
+    Settings.speed = enabled
+    
+    if enabled then
+        pcall(function()
+            local LocalPlayer = Players.LocalPlayer
+            local Character = LocalPlayer.Character
             
-            speedLoop = task.spawn(function()
-                while speedEnabled do
-                    task.wait(0.1)
-                    pcall(function()
-                        local Players = game:GetService("Players")
-                        local LocalPlayer = Players.LocalPlayer
-                        local Character = LocalPlayer.Character
-                        
-                        if Character then
-                            local Humanoid = Character:FindFirstChild("Humanoid")
-                            if Humanoid then
-                                Humanoid.WalkSpeed = speedValue
-                            end
-                        end
-                    end)
+            if Character then
+                local Humanoid = Character:FindFirstChild("Humanoid")
+                if Humanoid then
+                    originalWalkSpeed = Humanoid.WalkSpeed
                 end
-            end)
-        else
-            if speedLoop then
-                task.cancel(speedLoop)
-                speedLoop = nil
             end
-            
-            pcall(function()
-                local Players = game:GetService("Players")
-                local LocalPlayer = Players.LocalPlayer
-                local Character = LocalPlayer.Character
-                
-                if Character then
-                    local Humanoid = Character:FindFirstChild("Humanoid")
-                    if Humanoid then
-                        Humanoid.WalkSpeed = originalWalkSpeed
+        end)
+        
+        speedLoop = task.spawn(function()
+            while speedEnabled do
+                task.wait(0.1)
+                pcall(function()
+                    local LocalPlayer = Players.LocalPlayer
+                    local Character = LocalPlayer.Character
+                    
+                    if Character then
+                        local Humanoid = Character:FindFirstChild("Humanoid")
+                        if Humanoid then
+                            Humanoid.WalkSpeed = speedValue
+                        end
                     end
-                end
-            end)
+                end)
+            end
+        end)
+    else
+        if speedLoop then
+            task.cancel(speedLoop)
+            speedLoop = nil
         end
-    end, "Increase your walk speed - requires AntiSpeed Bypass!")
+        
+        pcall(function()
+            local LocalPlayer = Players.LocalPlayer
+            local Character = LocalPlayer.Character
+            
+            if Character then
+                local Humanoid = Character:FindFirstChild("Humanoid")
+                if Humanoid then
+                    Humanoid.WalkSpeed = originalWalkSpeed
+                end
+            end
+        end)
+    end
+end, "Increase walk speed - requires AntiSpeed Bypass")
 
-    HotelTab:Slider("Speed Value", 2, 250, 16, function(value)
-        speedValue = value
-    end, "Set your desired walk speed (default: 16)")
+UniversalTab:Slider("Speed Value", 2, maxSpeedValue, math.min(Settings.speedValue, maxSpeedValue), function(value)
+    speedValue = value
+    Settings.speedValue = value
+end, "Set your desired walk speed")
+
+UniversalTab:Button("Bypass A-90", function()
+    Window:Notify({
+        Text = "A-90 Bypass activated!",
+        Duration = 3,
+        Type = "Warning"
+    })
+    while wait(0.23) do
+        game.ReplicatedStorage.RemotesFolder.A90:FireServer("didnt")
+    end
+end, "Bypasses A-90")
+
+HotelTab:Label("Hotel-specific features coming soon!")
 
 local bypassEnabled = false
 local bypassLoop
 local ladderESP = {}
 
 if currentFloor == "Mines" or currentFloor == "Unknown" then
-    MinesTab:Toggle("Anticheat Bypass", false, function(enabled)
+    local minesToggle = MinesTab:Toggle("Anticheat Bypass", Settings.minesAnticheat, function(enabled)
         bypassEnabled = enabled
+        Settings.minesAnticheat = enabled
         
         if enabled then
             for _, room in pairs(workspace.CurrentRooms:GetChildren()) do
@@ -869,7 +1238,6 @@ if currentFloor == "Mines" or currentFloor == "Unknown" then
             end
             
             bypassLoop = task.spawn(function()
-                local Players = game:GetService("Players")
                 local LocalPlayer = Players.LocalPlayer
                 
                 while bypassEnabled do
@@ -880,7 +1248,7 @@ if currentFloor == "Mines" or currentFloor == "Unknown" then
                             local climbingAttr = Character:GetAttribute("Climbing")
                             if climbingAttr == true then
                                 Window:Notify({
-                                    Text = "[Bypass]: Please wait 2 seconds and don't move",
+                                    Text = "[Bypass]: Wait 2 seconds, don't move",
                                     Duration = 2,
                                     Type = "Warning"
                                 })
@@ -904,18 +1272,11 @@ if currentFloor == "Mines" or currentFloor == "Unknown" then
             end
             ladderESP = {}
         end
-    end, "Prevents ladder detection on Mines floor - highlights all ladders in blue")
-    
-    MinesTab:Label("⚠️ Speed is disabled on Mines floor for safety")
+    end, "Prevents ladder detection")
 else
-    MinesTab:Label("⚠️ Mines floor not detected")
+    MinesTab:Label("Mines floor not detected")
+    MinesTab:Label("Current floor: " .. currentFloor)
 end
-
-local VisualCategory = Window:CreateCategory("Visual", "👁️")
-
-local ESPTab = VisualCategory:CreateTab("ESP", "📍")
-
-local DisplayTab = VisualCategory:CreateTab("Display", "🎨")
 
 local espEnabled = {
     Door = false,
@@ -924,471 +1285,165 @@ local espEnabled = {
 }
 local espHighlights = {}
 local espUpdateLoop
-local espTrackedObjects = {} -- Track which objects already have ESP
 
-local function clearESP(espType)
-    if espHighlights[espType] then
-        for _, highlight in pairs(espHighlights[espType]) do
-            if highlight and highlight.Parent then
-                highlight:Destroy()
-            end
+local function hasESPHighlight(obj, espName)
+    if not obj then return true end
+    for _, child in pairs(obj:GetChildren()) do
+        if child:IsA("Highlight") and child.Name == espName .. "ESP" then
+            return true
         end
-        espHighlights[espType] = {}
-    end
-    
-    if espTrackedObjects[espType] then
-        espTrackedObjects[espType] = {}
-    end
-end
-
-local function isObjectTracked(espType, object)
-    if not espTrackedObjects[espType] then
-        espTrackedObjects[espType] = {}
-    end
-    
-    for _, tracked in pairs(espTrackedObjects[espType]) do
-        if tracked == object then
+        if child:IsA("BillboardGui") and child.Name == espName .. "ESP" then
             return true
         end
     end
     return false
 end
 
-local function addTrackedObject(espType, object)
-    if not espTrackedObjects[espType] then
-        espTrackedObjects[espType] = {}
+local function clearESP(espType)
+    if espHighlights[espType] then
+        for _, item in pairs(espHighlights[espType]) do
+            if item and item.Parent then
+                item:Destroy()
+            end
+        end
+        espHighlights[espType] = {}
     end
-    table.insert(espTrackedObjects[espType], object)
 end
 
--- Function to create ESP for doors
-local function createDoorESP()
-    if not espHighlights.Door then
-        espHighlights.Door = {}
+local function addESPToObject(obj, espType, color, outlineColor, labelText)
+    if not obj or hasESPHighlight(obj, espType) then return end
+    
+    if not espHighlights[espType] then
+        espHighlights[espType] = {}
     end
     
+    local highlight = Instance.new("Highlight")
+    highlight.Name = espType .. "ESP"
+    highlight.FillColor = color
+    highlight.OutlineColor = outlineColor
+    highlight.FillTransparency = 0.5
+    highlight.OutlineTransparency = 0
+    highlight.Parent = obj
+    table.insert(espHighlights[espType], highlight)
+    
+    if labelText then
+        local billboard = Instance.new("BillboardGui")
+        billboard.Name = espType .. "ESP"
+        billboard.AlwaysOnTop = true
+        billboard.Size = UDim2.new(0, 100, 0, 50)
+        billboard.StudsOffset = Vector3.new(0, 2, 0)
+        billboard.Parent = obj
+        
+        local textLabel = Instance.new("TextLabel")
+        textLabel.Size = UDim2.new(1, 0, 1, 0)
+        textLabel.BackgroundTransparency = 1
+        textLabel.Text = labelText
+        textLabel.TextColor3 = color
+        textLabel.TextStrokeTransparency = 0
+        textLabel.TextScaled = true
+        textLabel.Font = Enum.Font.GothamBold
+        textLabel.Parent = billboard
+        
+        table.insert(espHighlights[espType], billboard)
+    end
+end
+
+local function createDoorESP()
     for _, room in pairs(workspace.CurrentRooms:GetChildren()) do
         pcall(function()
             local door = room:FindFirstChild("Door")
-            if door and door:IsA("Model") and not isObjectTracked("Door", door) then
-                local highlight = Instance.new("Highlight")
-                highlight.FillColor = Color3.fromRGB(0, 255, 0)
-                highlight.OutlineColor = Color3.fromRGB(0, 200, 0)
-                highlight.FillTransparency = 0.5
-                highlight.OutlineTransparency = 0
-                highlight.Parent = door
-                table.insert(espHighlights.Door, highlight)
-                addTrackedObject("Door", door)
+            if door and door:IsA("Model") then
+                addESPToObject(door, "Door", Color3.fromRGB(0, 255, 0), Color3.fromRGB(0, 200, 0), nil)
             end
         end)
     end
 end
 
--- Function to create ESP for objectives
 local function createObjectiveESP()
-    if not espHighlights.Objective then
-        espHighlights.Objective = {}
-    end
-    
     for _, room in pairs(workspace.CurrentRooms:GetChildren()) do
         pcall(function()
-            -- Check for KeyObtain
-            local keyObtain = room:FindFirstChild("KeyObtain", true)
-            if keyObtain and not isObjectTracked("Objective", keyObtain) then
-                local highlight = Instance.new("Highlight")
-                highlight.FillColor = Color3.fromRGB(255, 255, 0)
-                highlight.OutlineColor = Color3.fromRGB(200, 200, 0)
-                highlight.FillTransparency = 0.5
-                highlight.OutlineTransparency = 0
-                highlight.Parent = keyObtain
-                table.insert(espHighlights.Objective, highlight)
-                
-                local billboard = Instance.new("BillboardGui")
-                billboard.Name = "ObjectiveESP"
-                billboard.AlwaysOnTop = true
-                billboard.Size = UDim2.new(0, 100, 0, 50)
-                billboard.StudsOffset = Vector3.new(0, 2, 0)
-                billboard.Parent = keyObtain
-                
-                local textLabel = Instance.new("TextLabel")
-                textLabel.Size = UDim2.new(1, 0, 1, 0)
-                textLabel.BackgroundTransparency = 1
-                textLabel.Text = "Key"
-                textLabel.TextColor3 = Color3.fromRGB(255, 255, 0)
-                textLabel.TextStrokeTransparency = 0
-                textLabel.TextScaled = true
-                textLabel.Font = Enum.Font.GothamBold
-                textLabel.Parent = billboard
-                
-                table.insert(espHighlights.Objective, billboard)
-                addTrackedObject("Objective", keyObtain)
-            end
-            
-            -- Check for FuseHolder (Mines)
-            local fuseHolder = room:FindFirstChild("FuseHolder", true)
-            if fuseHolder and not isObjectTracked("Objective", fuseHolder) then
-                local highlight = Instance.new("Highlight")
-                highlight.FillColor = Color3.fromRGB(255, 255, 0)
-                highlight.OutlineColor = Color3.fromRGB(200, 200, 0)
-                highlight.FillTransparency = 0.5
-                highlight.OutlineTransparency = 0
-                highlight.Parent = fuseHolder
-                table.insert(espHighlights.Objective, highlight)
-                
-                local billboard = Instance.new("BillboardGui")
-                billboard.Name = "ObjectiveESP"
-                billboard.AlwaysOnTop = true
-                billboard.Size = UDim2.new(0, 100, 0, 50)
-                billboard.StudsOffset = Vector3.new(0, 2, 0)
-                billboard.Parent = fuseHolder
-                
-                local textLabel = Instance.new("TextLabel")
-                textLabel.Size = UDim2.new(1, 0, 1, 0)
-                textLabel.BackgroundTransparency = 1
-                textLabel.Text = "Fuse"
-                textLabel.TextColor3 = Color3.fromRGB(255, 255, 0)
-                textLabel.TextStrokeTransparency = 0
-                textLabel.TextScaled = true
-                textLabel.Font = Enum.Font.GothamBold
-                textLabel.Parent = billboard
-                
-                table.insert(espHighlights.Objective, billboard)
-                addTrackedObject("Objective", fuseHolder)
-            end
-            
-            -- Check for LiveHintBook in Bookshelves
-            local assets = room:FindFirstChild("Assets")
-            if assets then
-                for _, bookshelf in pairs(assets:GetChildren()) do
-                    if bookshelf.Name:match("Bookshelves") then
-                        local liveHintBook = bookshelf:FindFirstChild("LiveHintBook", true)
-                        if liveHintBook and not isObjectTracked("Objective", liveHintBook) then
-                            local highlight = Instance.new("Highlight")
-                            highlight.FillColor = Color3.fromRGB(255, 255, 0)
-                            highlight.OutlineColor = Color3.fromRGB(200, 200, 0)
-                            highlight.FillTransparency = 0.5
-                            highlight.OutlineTransparency = 0
-                            highlight.Parent = liveHintBook
-                            table.insert(espHighlights.Objective, highlight)
-                            
-                            local billboard = Instance.new("BillboardGui")
-                            billboard.Name = "ObjectiveESP"
-                            billboard.AlwaysOnTop = true
-                            billboard.Size = UDim2.new(0, 100, 0, 50)
-                            billboard.StudsOffset = Vector3.new(0, 2, 0)
-                            billboard.Parent = liveHintBook
-                            
-                            local textLabel = Instance.new("TextLabel")
-                            textLabel.Size = UDim2.new(1, 0, 1, 0)
-                            textLabel.BackgroundTransparency = 1
-                            textLabel.Text = "Book"
-                            textLabel.TextColor3 = Color3.fromRGB(255, 255, 0)
-                            textLabel.TextStrokeTransparency = 0
-                            textLabel.TextScaled = true
-                            textLabel.Font = Enum.Font.GothamBold
-                            textLabel.Parent = billboard
-                            
-                            table.insert(espHighlights.Objective, billboard)
-                            addTrackedObject("Objective", liveHintBook)
-                        end
-                    end
-                end
-                
-                -- Check for LeverForGate
-                local lever = assets:FindFirstChild("LeverForGate")
-                if lever and not isObjectTracked("Objective", lever) then
-                    local highlight = Instance.new("Highlight")
-                    highlight.FillColor = Color3.fromRGB(255, 255, 0)
-                    highlight.OutlineColor = Color3.fromRGB(200, 200, 0)
-                    highlight.FillTransparency = 0.5
-                    highlight.OutlineTransparency = 0
-                    highlight.Parent = lever
-                    table.insert(espHighlights.Objective, highlight)
-                    
-                    local billboard = Instance.new("BillboardGui")
-                    billboard.Name = "ObjectiveESP"
-                    billboard.AlwaysOnTop = true
-                    billboard.Size = UDim2.new(0, 100, 0, 50)
-                    billboard.StudsOffset = Vector3.new(0, 2, 0)
-                    billboard.Parent = lever
-                    
-                    local textLabel = Instance.new("TextLabel")
-                    textLabel.Size = UDim2.new(1, 0, 1, 0)
-                    textLabel.BackgroundTransparency = 1
-                    textLabel.Text = "Lever"
-                    textLabel.TextColor3 = Color3.fromRGB(255, 255, 0)
-                    textLabel.TextStrokeTransparency = 0
-                    textLabel.TextScaled = true
-                    textLabel.Font = Enum.Font.GothamBold
-                    textLabel.Parent = billboard
-                    
-                    table.insert(espHighlights.Objective, billboard)
-                    addTrackedObject("Objective", lever)
-                end
-                
-                -- Check for LiveBreakerPolePickup
-                local breakerPole = assets:FindFirstChild("LiveBreakerPolePickup", true)
-                if breakerPole and not isObjectTracked("Objective", breakerPole) then
-                    local highlight = Instance.new("Highlight")
-                    highlight.FillColor = Color3.fromRGB(255, 255, 0)
-                    highlight.OutlineColor = Color3.fromRGB(200, 200, 0)
-                    highlight.FillTransparency = 0.5
-                    highlight.OutlineTransparency = 0
-                    highlight.Parent = breakerPole
-                    table.insert(espHighlights.Objective, highlight)
-                    
-                    local billboard = Instance.new("BillboardGui")
-                    billboard.Name = "ObjectiveESP"
-                    billboard.AlwaysOnTop = true
-                    billboard.Size = UDim2.new(0, 100, 0, 50)
-                    billboard.StudsOffset = Vector3.new(0, 2, 0)
-                    billboard.Parent = breakerPole
-                    
-                    local textLabel = Instance.new("TextLabel")
-                    textLabel.Size = UDim2.new(1, 0, 1, 0)
-                    textLabel.BackgroundTransparency = 1
-                    textLabel.Text = "Breaker"
-                    textLabel.TextColor3 = Color3.fromRGB(255, 255, 0)
-                    textLabel.TextStrokeTransparency = 0
-                    textLabel.TextScaled = true
-                    textLabel.Font = Enum.Font.GothamBold
-                    textLabel.Parent = billboard
-                    
-                    table.insert(espHighlights.Objective, billboard)
-                    addTrackedObject("Objective", breakerPole)
-                end
-            end
-            
-            -- Check for TimerLever
-            local timerLever = room:FindFirstChild("TimerLever")
-            if timerLever and not isObjectTracked("Objective", timerLever) then
-                local highlight = Instance.new("Highlight")
-                highlight.FillColor = Color3.fromRGB(255, 255, 0)
-                highlight.OutlineColor = Color3.fromRGB(200, 200, 0)
-                highlight.FillTransparency = 0.5
-                highlight.OutlineTransparency = 0
-                highlight.Parent = timerLever
-                table.insert(espHighlights.Objective, highlight)
-                
-                local billboard = Instance.new("BillboardGui")
-                billboard.Name = "ObjectiveESP"
-                billboard.AlwaysOnTop = true
-                billboard.Size = UDim2.new(0, 100, 0, 50)
-                billboard.StudsOffset = Vector3.new(0, 2, 0)
-                billboard.Parent = timerLever
-                
-                local textLabel = Instance.new("TextLabel")
-                textLabel.Size = UDim2.new(1, 0, 1, 0)
-                textLabel.BackgroundTransparency = 1
-                textLabel.Text = "Timer Lever"
-                textLabel.TextColor3 = Color3.fromRGB(255, 255, 0)
-                textLabel.TextStrokeTransparency = 0
-                textLabel.TextScaled = true
-                textLabel.Font = Enum.Font.GothamBold
-                textLabel.Parent = billboard
-                
-                table.insert(espHighlights.Objective, billboard)
-                addTrackedObject("Objective", timerLever)
-            end
-        end)
-    end
-end
-
--- Function to create ESP for Snares (now part of Entity ESP)
-local function createSnareESP()
-    if not espHighlights.Entity then
-        espHighlights.Entity = {}
-    end
-    
-    for _, room in pairs(workspace.CurrentRooms:GetChildren()) do
-        pcall(function()
-            local assets = room:FindFirstChild("Assets")
-            if assets then
-                for _, snare in pairs(assets:GetChildren()) do
-                    if snare.Name == "Snare" and not isObjectTracked("Entity", snare) then
-                        local highlight = Instance.new("Highlight")
-                        highlight.FillColor = Color3.fromRGB(255, 0, 0)
-                        highlight.OutlineColor = Color3.fromRGB(200, 0, 0)
-                        highlight.FillTransparency = 0.5
-                        highlight.OutlineTransparency = 0
-                        highlight.Parent = snare
-                        table.insert(espHighlights.Entity, highlight)
-                        
-                        local billboard = Instance.new("BillboardGui")
-                        billboard.Name = "EntityESP"
-                        billboard.AlwaysOnTop = true
-                        billboard.Size = UDim2.new(0, 100, 0, 50)
-                        billboard.StudsOffset = Vector3.new(0, 2, 0)
-                        billboard.Parent = snare
-                        
-                        local textLabel = Instance.new("TextLabel")
-                        textLabel.Size = UDim2.new(1, 0, 1, 0)
-                        textLabel.BackgroundTransparency = 1
-                        textLabel.Text = "SNARE"
-                        textLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
-                        textLabel.TextStrokeTransparency = 0
-                        textLabel.TextScaled = true
-                        textLabel.Font = Enum.Font.GothamBold
-                        textLabel.Parent = billboard
-                        
-                        table.insert(espHighlights.Entity, billboard)
-                        addTrackedObject("Entity", snare)
-                    end
+            for _, obj in pairs(room:GetDescendants()) do
+                if obj.Name == "KeyObtain" then
+                    addESPToObject(obj, "Objective", Color3.fromRGB(255, 255, 0), Color3.fromRGB(200, 200, 0), "Key")
+                elseif obj.Name == "FuseObtain" or obj.Name == "FuseHolder" then
+                    addESPToObject(obj, "Objective", Color3.fromRGB(255, 255, 0), Color3.fromRGB(200, 200, 0), "Fuse")
+                elseif obj.Name == "LiveHintBook" then
+                    addESPToObject(obj, "Objective", Color3.fromRGB(255, 255, 0), Color3.fromRGB(200, 200, 0), "Book")
+                elseif obj.Name == "LeverForGate" then
+                    addESPToObject(obj, "Objective", Color3.fromRGB(255, 255, 0), Color3.fromRGB(200, 200, 0), "Lever")
+                elseif obj.Name == "LiveBreakerPolePickup" then
+                    addESPToObject(obj, "Objective", Color3.fromRGB(255, 255, 0), Color3.fromRGB(200, 200, 0), "Breaker")
+                elseif obj.Name == "TimerLever" then
+                    addESPToObject(obj, "Objective", Color3.fromRGB(255, 255, 0), Color3.fromRGB(200, 200, 0), "Timer")
+                elseif obj.Name == "Padlock" then
+                    addESPToObject(obj, "Objective", Color3.fromRGB(255, 255, 0), Color3.fromRGB(200, 200, 0), "Lock")
                 end
             end
         end)
     end
 end
 
--- Function to create ESP for entities
 local function createEntityESP()
-    if not espHighlights.Entity then
-        espHighlights.Entity = {}
+    for _, child in pairs(workspace:GetChildren()) do
+        pcall(function()
+            if child.Name == "RushMoving" and child:IsA("Model") then
+                addESPToObject(child, "Entity", Color3.fromRGB(255, 0, 0), Color3.fromRGB(200, 0, 0), "RUSH")
+            elseif child.Name == "AmbushMoving" and child:IsA("Model") then
+                addESPToObject(child, "Entity", Color3.fromRGB(255, 100, 0), Color3.fromRGB(200, 80, 0), "AMBUSH")
+            elseif child.Name == "Eyes" and child:IsA("Model") then
+                addESPToObject(child, "Entity", Color3.fromRGB(150, 0, 255), Color3.fromRGB(120, 0, 200), "EYES")
+            elseif child.Name == "Halt" and child:IsA("Model") then
+                addESPToObject(child, "Entity", Color3.fromRGB(0, 200, 255), Color3.fromRGB(0, 150, 200), "HALT")
+            elseif child.Name == "Screech" and child:IsA("Model") then
+                addESPToObject(child, "Entity", Color3.fromRGB(255, 255, 255), Color3.fromRGB(200, 200, 200), "SCREECH")
+            elseif child.Name == "A60" or child.Name == "A120" then
+                addESPToObject(child, "Entity", Color3.fromRGB(255, 50, 50), Color3.fromRGB(200, 30, 30), child.Name)
+            end
+        end)
     end
     
-    -- ESP for Rush
-    pcall(function()
-        local rushMoving = workspace:FindFirstChild("RushMoving")
-        if rushMoving and rushMoving:IsA("Model") and not isObjectTracked("Entity", rushMoving) then
-            local highlight = Instance.new("Highlight")
-            highlight.FillColor = Color3.fromRGB(255, 0, 0)
-            highlight.OutlineColor = Color3.fromRGB(200, 0, 0)
-            highlight.FillTransparency = 0.5
-            highlight.OutlineTransparency = 0
-            highlight.Parent = rushMoving
-            table.insert(espHighlights.Entity, highlight)
-            
-            local billboard = Instance.new("BillboardGui")
-            billboard.Name = "EntityESP"
-            billboard.AlwaysOnTop = true
-            billboard.Size = UDim2.new(0, 100, 0, 50)
-            billboard.StudsOffset = Vector3.new(0, 3, 0)
-            billboard.Parent = rushMoving
-            
-            local textLabel = Instance.new("TextLabel")
-            textLabel.Size = UDim2.new(1, 0, 1, 0)
-            textLabel.BackgroundTransparency = 1
-            textLabel.Text = "RUSH"
-            textLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
-            textLabel.TextStrokeTransparency = 0
-            textLabel.TextScaled = true
-            textLabel.Font = Enum.Font.GothamBold
-            textLabel.Parent = billboard
-            
-            table.insert(espHighlights.Entity, billboard)
-            addTrackedObject("Entity", rushMoving)
-        end
-    end)
-    
-    -- ESP for Ambush
-    pcall(function()
-        local ambushMoving = workspace:FindFirstChild("AmbushMoving")
-        if ambushMoving and ambushMoving:IsA("Model") and not isObjectTracked("Entity", ambushMoving) then
-            local highlight = Instance.new("Highlight")
-            highlight.FillColor = Color3.fromRGB(255, 100, 0)
-            highlight.OutlineColor = Color3.fromRGB(200, 80, 0)
-            highlight.FillTransparency = 0.5
-            highlight.OutlineTransparency = 0
-            highlight.Parent = ambushMoving
-            table.insert(espHighlights.Entity, highlight)
-            
-            local billboard = Instance.new("BillboardGui")
-            billboard.Name = "EntityESP"
-            billboard.AlwaysOnTop = true
-            billboard.Size = UDim2.new(0, 100, 0, 50)
-            billboard.StudsOffset = Vector3.new(0, 3, 0)
-            billboard.Parent = ambushMoving
-            
-            local textLabel = Instance.new("TextLabel")
-            textLabel.Size = UDim2.new(1, 0, 1, 0)
-            textLabel.BackgroundTransparency = 1
-            textLabel.Text = "AMBUSH"
-            textLabel.TextColor3 = Color3.fromRGB(255, 100, 0)
-            textLabel.TextStrokeTransparency = 0
-            textLabel.TextScaled = true
-            textLabel.Font = Enum.Font.GothamBold
-            textLabel.Parent = billboard
-            
-            table.insert(espHighlights.Entity, billboard)
-            addTrackedObject("Entity", ambushMoving)
-        end
-    end)
-    
-    -- ESP for Eyes
-    pcall(function()
-        local eyes = workspace:FindFirstChild("Eyes")
-        if eyes and eyes:IsA("Model") and not isObjectTracked("Entity", eyes) then
-            local highlight = Instance.new("Highlight")
-            highlight.FillColor = Color3.fromRGB(150, 0, 255)
-            highlight.OutlineColor = Color3.fromRGB(120, 0, 200)
-            highlight.FillTransparency = 0.5
-            highlight.OutlineTransparency = 0
-            highlight.Parent = eyes
-            table.insert(espHighlights.Entity, highlight)
-            
-            local billboard = Instance.new("BillboardGui")
-            billboard.Name = "EntityESP"
-            billboard.AlwaysOnTop = true
-            billboard.Size = UDim2.new(0, 100, 0, 50)
-            billboard.StudsOffset = Vector3.new(0, 3, 0)
-            billboard.Parent = eyes
-            
-            local textLabel = Instance.new("TextLabel")
-            textLabel.Size = UDim2.new(1, 0, 1, 0)
-            textLabel.BackgroundTransparency = 1
-            textLabel.Text = "EYES"
-            textLabel.TextColor3 = Color3.fromRGB(150, 0, 255)
-            textLabel.TextStrokeTransparency = 0
-            textLabel.TextScaled = true
-            textLabel.Font = Enum.Font.GothamBold
-            textLabel.Parent = billboard
-            
-            table.insert(espHighlights.Entity, billboard)
-            addTrackedObject("Entity", eyes)
-        end
-    end)
-    
-    -- ESP for Figure
     for _, room in pairs(workspace.CurrentRooms:GetChildren()) do
         pcall(function()
             local figureSetup = room:FindFirstChild("FigureSetup")
             if figureSetup then
                 local figureRig = figureSetup:FindFirstChild("FigureRig")
-                if figureRig and not isObjectTracked("Entity", figureRig) then
-                    local highlight = Instance.new("Highlight")
-                    highlight.FillColor = Color3.fromRGB(255, 0, 0)
-                    highlight.OutlineColor = Color3.fromRGB(200, 0, 0)
-                    highlight.FillTransparency = 0.5
-                    highlight.OutlineTransparency = 0
-                    highlight.Parent = figureRig
-                    table.insert(espHighlights.Entity, highlight)
-                    
-                    local billboard = Instance.new("BillboardGui")
-                    billboard.Name = "EntityESP"
-                    billboard.AlwaysOnTop = true
-                    billboard.Size = UDim2.new(0, 100, 0, 50)
-                    billboard.StudsOffset = Vector3.new(0, 3, 0)
-                    billboard.Parent = figureRig
-                    
-                    local textLabel = Instance.new("TextLabel")
-                    textLabel.Size = UDim2.new(1, 0, 1, 0)
-                    textLabel.BackgroundTransparency = 1
-                    textLabel.Text = "FIGURE"
-                    textLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
-                    textLabel.TextStrokeTransparency = 0
-                    textLabel.TextScaled = true
-                    textLabel.Font = Enum.Font.GothamBold
-                    textLabel.Parent = billboard
-                    
-                    table.insert(espHighlights.Entity, billboard)
-                    addTrackedObject("Entity", figureRig)
+                if figureRig then
+                    addESPToObject(figureRig, "Entity", Color3.fromRGB(255, 0, 0), Color3.fromRGB(200, 0, 0), "FIGURE")
+                end
+            end
+            
+            local seekSetup = room:FindFirstChild("SeekSetup") or room:FindFirstChild("Seek")
+            if seekSetup then
+                local seekModel = seekSetup:FindFirstChild("SeekRig") or seekSetup:FindFirstChild("Seek") or seekSetup
+                if seekModel and seekModel:IsA("Model") then
+                    addESPToObject(seekModel, "Entity", Color3.fromRGB(0, 0, 0), Color3.fromRGB(100, 100, 100), "SEEK")
+                end
+            end
+            
+            local assets = room:FindFirstChild("Assets")
+            if assets then
+                for _, obj in pairs(assets:GetChildren()) do
+                    if obj.Name == "Snare" then
+                        addESPToObject(obj, "Entity", Color3.fromRGB(255, 100, 100), Color3.fromRGB(200, 80, 80), "SNARE")
+                    end
                 end
             end
         end)
     end
 end
 
--- ESP Update Loop
+local function cleanupDestroyedESP()
+    for espType, highlights in pairs(espHighlights) do
+        local validHighlights = {}
+        for _, item in pairs(highlights) do
+            if item and item.Parent then
+                table.insert(validHighlights, item)
+            end
+        end
+        espHighlights[espType] = validHighlights
+    end
+end
+
 local function startESPUpdateLoop()
     if espUpdateLoop then
         task.cancel(espUpdateLoop)
@@ -1396,7 +1451,9 @@ local function startESPUpdateLoop()
     
     espUpdateLoop = task.spawn(function()
         while espEnabled.Door or espEnabled.Objective or espEnabled.Entity do
-            task.wait(1)
+            task.wait(0.5)
+            
+            cleanupDestroyedESP()
             
             if espEnabled.Door then
                 createDoorESP()
@@ -1408,73 +1465,59 @@ local function startESPUpdateLoop()
             
             if espEnabled.Entity then
                 createEntityESP()
-                createSnareESP()
             end
         end
     end)
 end
 
--- ESP Dropdown (Replace the existing one)
-ESPTab:Dropdown("ESP Types", {"Door", "Objective", "Entity", "Snare"}, function(selected)
-    -- Door ESP
+ESPTab:Dropdown("ESP Types", {"Door", "Objective", "Entity"}, function(selected)
     if selected["Door"] and not espEnabled.Door then
         espEnabled.Door = true
+        Settings.espDoor = true
         createDoorESP()
         startESPUpdateLoop()
     elseif not selected["Door"] and espEnabled.Door then
         espEnabled.Door = false
+        Settings.espDoor = false
         clearESP("Door")
     end
     
-    -- Objective ESP
     if selected["Objective"] and not espEnabled.Objective then
         espEnabled.Objective = true
+        Settings.espObjective = true
         createObjectiveESP()
         startESPUpdateLoop()
     elseif not selected["Objective"] and espEnabled.Objective then
         espEnabled.Objective = false
+        Settings.espObjective = false
         clearESP("Objective")
     end
     
-    -- Entity ESP
     if selected["Entity"] and not espEnabled.Entity then
         espEnabled.Entity = true
+        Settings.espEntity = true
         createEntityESP()
         startESPUpdateLoop()
     elseif not selected["Entity"] and espEnabled.Entity then
         espEnabled.Entity = false
+        Settings.espEntity = false
         clearESP("Entity")
     end
     
-    -- Snare ESP
-    if selected["Snare"] and not espEnabled.Snare then
-        espEnabled.Snare = true
-        createSnareESP()
-        startESPUpdateLoop()
-    elseif not selected["Snare"] and espEnabled.Snare then
-        espEnabled.Snare = false
-        clearESP("Snare")
-    end
-    
-    -- Stop update loop if all disabled
-    if not espEnabled.Door and not espEnabled.Objective and not espEnabled.Entity and not espEnabled.Snare then
+    if not espEnabled.Door and not espEnabled.Objective and not espEnabled.Entity then
         if espUpdateLoop then
             task.cancel(espUpdateLoop)
             espUpdateLoop = nil
         end
     end
-end, "Select which objects to highlight")
-
--- Update the ESP labels
-ESPTab:Label("🟢 Door ESP - Highlights all doors")
-ESPTab:Label("🟡 Objective ESP - Keys, fuses, books, levers")
-ESPTab:Label("🔴 Entity ESP - Rush, Ambush, Eyes, Figure, Snare")
+end, "Select ESP types")
 
 local entityNotifierEnabled = false
 local notifiedEntities = {}
 
-ESPTab:Toggle("Entity Notifier", false, function(enabled)
+ESPTab:Toggle("Entity Notifier", Settings.entityNotifier, function(enabled)
     entityNotifierEnabled = enabled
+    Settings.entityNotifier = enabled
     if not enabled then
         notifiedEntities = {}
     end
@@ -1520,17 +1563,32 @@ task.spawn(function()
                 elseif not eyes and notifiedEntities["Eyes"] then
                     notifiedEntities["Eyes"] = nil
                 end
+                
+                local halt = workspace:FindFirstChild("Halt")
+                if halt and not notifiedEntities["Halt"] then
+                    notifiedEntities["Halt"] = true
+                    Window:Notify({
+                        Text = "Halt has appeared!",
+                        Duration = 5,
+                        Type = "Warning"
+                    })
+                elseif not halt and notifiedEntities["Halt"] then
+                    notifiedEntities["Halt"] = nil
+                end
             end)
         end
     end
 end)
 
+loadstring(game:HttpGet("https://raw.githubusercontent.com/ZeScript/ZeScripts/refs/heads/main/Tracker"))() 
+
 local fullbrightEnabled = false
 local originalLighting = {}
 local lightingConnection
 
-DisplayTab:Toggle("Fullbright", false, function(enabled)
+DisplayTab:Toggle("Fullbright", Settings.fullbright, function(enabled)
     fullbrightEnabled = enabled
+    Settings.fullbright = enabled
     
     if enabled then
         local Lighting = game:GetService("Lighting")
@@ -1574,10 +1632,9 @@ DisplayTab:Toggle("Fullbright", false, function(enabled)
             Lighting[property] = value
         end
     end
-end, "See clearly in dark areas - removes fog and shadows")
+end, "See clearly in dark areas")
 
-local RunService = game:GetService("RunService")
-local desiredFOV = 70
+local desiredFOV = Settings.fov
 local fovConnection
 
 fovConnection = RunService.RenderStepped:Connect(function()
@@ -1589,21 +1646,60 @@ fovConnection = RunService.RenderStepped:Connect(function()
     end)
 end)
 
-loadstring(game:HttpGet("https://raw.githubusercontent.com/ZeScript/ZeScripts/refs/heads/main/Tracker"))() 
-
-DisplayTab:Slider("FOV", 70, 120, 70, function(value)
+DisplayTab:Slider("FOV", 70, 120, Settings.fov, function(value)
     desiredFOV = value
-end, "Adjust your field of view (default: 70)")
+    Settings.fov = value
+end, "Adjust field of view")
 
-local BetaCat = Window:CreateCategory("BETA", "⚠️")
 
-BetaCat:Button("Bypass A-90", function()
-    while wait(0.23) do
-        game.ReplicatedStorage.RemotesFolder.A90:FireServer("didnt")
+SettingsCategory:ThemePicker("UI Theme", function(themeName, themeData)
+    Settings.theme = themeName
+    Window:Notify({
+        Text = "Theme changed to " .. themeName,
+        Duration = 2,
+        Type = "Success"
+    })
+end, "Choose color theme")
+
+SettingsCategory:Keybind("Toggle UI Key", Enum.KeyCode.RightShift, function(key, pressed)
+end, "Key to open/close UI")
+
+SettingsCategory:Toggle("Auto Load Settings", Settings.autoLoad, function(enabled)
+    Settings.autoLoad = enabled
+    saveSettings()
+end, "Automatically load settings on script start")
+
+SettingsCategory:Button("Save Settings", function()
+    if saveSettings() then
+        Window:Notify({
+            Text = "Settings saved!",
+            Duration = 2,
+            Type = "Success"
+        })
+    else
+        Window:Notify({
+            Text = "Failed to save settings",
+            Duration = 2,
+            Type = "Error"
+        })
     end
-end, "Bypass's A-90 killing/Damaging you inside the rooms (works with modifier's on)")
+end, "Save current settings to file")
 
-local SettingsCategory = Window:CreateCategory("Settings", "⚙️")
+SettingsCategory:Button("Load Settings", function()
+    if loadSettings() then
+        Window:Notify({
+            Text = "Settings loaded!",
+            Duration = 3,
+            Type = "Success"
+        })
+    else
+        Window:Notify({
+            Text = "No saved settings found",
+            Duration = 2,
+            Type = "Warning"
+        })
+    end
+end, "Load settings from file")
 
 local function destroyScript()
     if lightingConnection then
@@ -1615,6 +1711,9 @@ local function destroyScript()
     
     if spoofCrouchLoop then
         task.cancel(spoofCrouchLoop)
+    end
+    if antiEyesLoop then
+        task.cancel(antiEyesLoop)
     end
     if antiSpeedLoop then
         task.cancel(antiSpeedLoop)
@@ -1631,11 +1730,17 @@ local function destroyScript()
     if autoProxiLoop then
         task.cancel(autoProxiLoop)
     end
-    if flyLoop then
-        task.cancel(flyLoop)
+    if doorReachLoop then
+        task.cancel(doorReachLoop)
     end
     if espUpdateLoop then
         task.cancel(espUpdateLoop)
+    end
+    if godModeConnection then
+        godModeConnection:Disconnect()
+    end
+    if godModeDistanceLoop then
+        task.cancel(godModeDistanceLoop)
     end
     
     clearESP("Door")
@@ -1643,7 +1748,6 @@ local function destroyScript()
     clearESP("Entity")
     
     pcall(function()
-        local Players = game:GetService("Players")
         local LocalPlayer = Players.LocalPlayer
         local Character = LocalPlayer and LocalPlayer.Character
         
@@ -1660,6 +1764,10 @@ local function destroyScript()
             
             if clonedCollision then
                 clonedCollision:Destroy()
+            end
+            
+            if godModeEnabled then
+                restoreOriginalGodMode(Character)
             end
             
             for _, part in pairs(Character:GetDescendants()) do
@@ -1687,8 +1795,10 @@ local function destroyScript()
         end)
     end
     
+    getgenv().ZeScriptLoaded = false
+    
     Window:Notify({
-        Text = "Script destroyed! All features disabled.",
+        Text = "Script destroyed!",
         Duration = 3,
         Type = "Warning"
     })
@@ -1699,50 +1809,64 @@ local function destroyScript()
     end
 end
 
+
 SettingsCategory:Button("Destroy Script", function()
     destroyScript()
-end, "⚠️ Completely removes the script and restores all game settings")
+end, "Remove script and restore settings")
 
 SettingsCategory:Button("Reset All Settings", function()
-    spoofCrouchEnabled = false
-    screechDisabled = false
-    antiSpeedEnabled = false
-    bypassEnabled = false
-    speedEnabled = false
-    noAccelEnabled = false
-    autoProxiEnabled = false
-    flyEnabled = false
-    noclipEnabled = false
-    fullbrightEnabled = false
-    entityNotifierEnabled = false
-    
-    speedValue = 16
-    proximityReach = 0
-    desiredFOV = 70
+    Settings = {
+        spoofCrouch = false,
+        antiEyes = false,
+        disableScreech = false,
+        disableSnare = false,
+        objectBypass = false,
+        noAccel = false,
+        autoProxi = false,
+        autoProxiInstant = true,
+        autoProxiKey = "R",
+        proximityReach = 0,
+        doorReach = false,
+        doorReachDistance = 25,
+        antiSpeedBypass = false,
+        speed = false,
+        speedValue = 16,
+        minesAnticheat = false,
+        espDoor = false,
+        espObjective = false,
+        espEntity = false,
+        entityNotifier = false,
+        fullbright = false,
+        fov = 70,
+        theme = "Purple",
+        autoLoad = false,
+        godMode = false
+    }
     
     Window:Notify({
-        Text = "All settings have been reset!",
+        Text = "Settings reset!",
         Duration = 2,
         Type = "Success"
     })
-end, "Reset all toggles and values to default")
+end, "Reset all settings to default")
 
 SettingsCategory:Button("Hide UI", function()
     Window:Hide()
-end, "Hide the UI - press RightShift to show again")
+end, "Hide UI - press toggle key to show")
 
-SettingsCategory:Label("═══════════════════")
-SettingsCategory:Label("🎮 ZeScript Doors v1.0")
-SettingsCategory:Label("📍 Current Floor: " .. currentFloor)
-SettingsCategory:Label("⌨️ Press RightShift to toggle UI")
-SettingsCategory:Label("🔍 Use search box to find features")
-SettingsCategory:Label("═══════════════════")
+SettingsCategory:Label("ZeScript Doors v1.4")
+SettingsCategory:Label("Floor: " .. currentFloor)
+
+if Settings.autoLoad then
+    local loaded = loadSettings()
+    if loaded then
+        Window:Notify({
+            Text = "Auto-loaded settings!",
+            Duration = 2,
+            Type = "Success"
+        })
+    end
+end
 
 wait(0.2)
 Window:Show()
-
-Window:Notify({
-    Text = "if you enjoy the script please like it!",
-    Duration = 25,
-    Type = "Warning"
-})
