@@ -1,8 +1,28 @@
 if getgenv().ZeScriptLoaded then
+    -- Note: This first warning remains since Window doesn't exist yet
     warn("ZeScript is already running! Please destroy the existing instance first.")
     return
 end
 getgenv().ZeScriptLoaded = true
+
+-- Global error handler (will be updated after Window is created)
+local Window = nil
+local function safeCall(func, errorContext)
+    local success, err = pcall(func)
+    if not success then
+        local errorMsg = "[ZeScript Error - " .. (errorContext or "Unknown") .. "]: " .. tostring(err)
+        if Window and Window.Notify then
+            Window:Notify({
+                Text = errorMsg,
+                Duration = 5,
+                Type = "Error"
+            })
+        else
+            warn(errorMsg)
+        end
+    end
+    return success
+end
 
 local httpRequest = (syn and syn.request) or http_request or request
 if not httpRequest then
@@ -14,7 +34,7 @@ local GAME_ID = tostring(game.JobId)
 
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/XasonYTB/XaLib/refs/heads/main/NewContentTesting"))()
 
-local Window = Library:CreateWindow({
+Window = Library:CreateWindow({
     Title = "ZeScript's Doors",
     Size = Vector2.new(700, 500),
     MinSize = Vector2.new(500, 400),
@@ -25,7 +45,7 @@ local Window = Library:CreateWindow({
 
 local currentFloor = "Unknown"
 local function detectFloor()
-    pcall(function()
+    safeCall(function()
         local ReplicatedStorage = game:GetService("ReplicatedStorage")
         local gameData = ReplicatedStorage:FindFirstChild("GameData")
         if gameData then
@@ -34,7 +54,7 @@ local function detectFloor()
                 currentFloor = floorValue.Value
             end
         end
-    end)
+    end, "Floor Detection")
     return currentFloor
 end
 
@@ -86,6 +106,13 @@ local function saveSettings()
             writefile(SaveFileName, game:GetService("HttpService"):JSONEncode(Settings))
         end
     end)
+    if not success then
+        Window:Notify({
+            Text = "[Settings Save Error]: " .. tostring(err),
+            Duration = 5,
+            Type = "Error"
+        })
+    end
     return success
 end
 
@@ -123,67 +150,75 @@ local function getDiscordUsername(discordId)
 end
 
 local function toggleLights(enabled)
-    lightsEnabled = enabled
-    for _, obj in pairs(game.Workspace:GetDescendants()) do
-        if obj:IsA("Light") or obj:IsA("PointLight") or obj:IsA("SpotLight") or obj:IsA("SurfaceLight") then
-            if originalLightStates[obj] == nil then
-                originalLightStates[obj] = obj.Enabled
+    safeCall(function()
+        lightsEnabled = enabled
+        for _, obj in pairs(game.Workspace:GetDescendants()) do
+            if obj:IsA("Light") or obj:IsA("PointLight") or obj:IsA("SpotLight") or obj:IsA("SurfaceLight") then
+                if originalLightStates[obj] == nil then
+                    originalLightStates[obj] = obj.Enabled
+                end
+                obj.Enabled = enabled
             end
-            obj.Enabled = enabled
         end
-    end
+    end, "Toggle Lights")
 end
 
 local function freezePlayer(playerName, freeze)
-    local targetPlayer = game.Players:FindFirstChild(playerName)
-    if targetPlayer and targetPlayer.Character then
-        local humanoidRootPart = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
-        if humanoidRootPart then
-            humanoidRootPart.Anchored = freeze
-            frozenPlayers[playerName] = freeze
+    safeCall(function()
+        local targetPlayer = game.Players:FindFirstChild(playerName)
+        if targetPlayer and targetPlayer.Character then
+            local humanoidRootPart = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if humanoidRootPart then
+                humanoidRootPart.Anchored = freeze
+                frozenPlayers[playerName] = freeze
+            end
         end
-    end
+    end, "Freeze Player")
 end
 
 local function spectatePlayer(playerName)
-    local Players = game:GetService("Players")
-    local LocalPlayer = Players.LocalPlayer
-    local targetPlayer = Players:FindFirstChild(playerName)
-    
-    if targetPlayer and targetPlayer.Character then
-        local camera = workspace.CurrentCamera
-        camera.CameraSubject = targetPlayer.Character.Humanoid
-        spectatingPlayer = playerName
+    safeCall(function()
+        local Players = game:GetService("Players")
+        local LocalPlayer = Players.LocalPlayer
+        local targetPlayer = Players:FindFirstChild(playerName)
         
-        Window:Notify({
-            Text = "Now spectating " .. playerName,
-            Duration = 3,
-            Type = "Success"
-        })
-    else
-        Window:Notify({
-            Text = "Could not spectate " .. playerName,
-            Duration = 3,
-            Type = "Error"
-        })
-    end
+        if targetPlayer and targetPlayer.Character then
+            local camera = workspace.CurrentCamera
+            camera.CameraSubject = targetPlayer.Character.Humanoid
+            spectatingPlayer = playerName
+            
+            Window:Notify({
+                Text = "Now spectating " .. playerName,
+                Duration = 3,
+                Type = "Success"
+            })
+        else
+            Window:Notify({
+                Text = "Could not spectate " .. playerName,
+                Duration = 3,
+                Type = "Error"
+            })
+        end
+    end, "Spectate Player")
 end
 
 local function stopSpectating()
-    local Players = game:GetService("Players")
-    local LocalPlayer = Players.LocalPlayer
-    
-    if LocalPlayer.Character then
-        local camera = workspace.CurrentCamera
-        camera.CameraSubject = LocalPlayer.Character.Humanoid
-        spectatingPlayer = nil
+    safeCall(function()
+        local Players = game:GetService("Players")
+        local LocalPlayer = Players.LocalPlayer
         
-        Window:Notify({
-            Text = "Stopped spectating",
-            Duration = 2,
-            Type = "Success"
-        })
-    end
+        if LocalPlayer.Character then
+            local camera = workspace.CurrentCamera
+            camera.CameraSubject = LocalPlayer.Character.Humanoid
+            spectatingPlayer = nil
+            
+            Window:Notify({
+                Text = "Stopped spectating",
+                Duration = 2,
+                Type = "Success"
+            })
+        end
+    end, "Stop Spectating")
 end
 
 local HttpService = game:GetService("HttpService")
@@ -196,62 +231,66 @@ local playerUpdateLoop
 
 local function getAllPlayers()
     local playerList = {}
-    for _, player in ipairs(Players:GetPlayers()) do
-        table.insert(playerList, {
-            name = player.Name,
-            userId = tostring(player.UserId)
-        })
-    end
+    safeCall(function()
+        for _, player in ipairs(Players:GetPlayers()) do
+            table.insert(playerList, {
+                name = player.Name,
+                userId = tostring(player.UserId)
+            })
+        end
+    end, "Get All Players")
     return playerList
 end
 
 local function checkDiscordCommands()
     if not discordConnected then return end
     
-    local success, response = pcall(function()
-        return httpRequest({
-            Url = DISCORD_API_URL .. "/api/commands/" .. GAME_ID,
-            Method = "GET"
-        })
-    end)
-    
-    if success and response.StatusCode == 200 then
-        local data = HttpService:JSONDecode(response.Body)
+    safeCall(function()
+        local success, response = pcall(function()
+            return httpRequest({
+                Url = DISCORD_API_URL .. "/api/commands/" .. GAME_ID,
+                Method = "GET"
+            })
+        end)
         
-        for _, cmd in ipairs(data.commands) do
-            local senderName = getDiscordUsername(cmd.senderId or "")
+        if success and response.StatusCode == 200 then
+            local data = HttpService:JSONDecode(response.Body)
             
-            if cmd.type == "kill" then
-                local targetPlayer = Players:FindFirstChild(cmd.target)
-                if targetPlayer then
-                    pcall(function()
-                        if targetPlayer == LocalPlayer then
-                            LocalPlayer.Character.Humanoid.Health = 0
-                        end
-                    end)
-                end
-            elseif cmd.type == "notify" then
-                Window:Notify({
-                    Text = senderName .. ": " .. cmd.message,
-                    Duration = 15,
-                    Type = "Warning"
-                })
-            elseif cmd.type == "kick" then
-                if cmd.target == LocalPlayer.Name then
-                    task.wait(1)
-                    LocalPlayer:Kick("Kicked by " .. senderName)
-                end
-            elseif cmd.type == "freeze" then
-                if cmd.target == LocalPlayer.Name then
-                    freezePlayer(LocalPlayer.Name, true)
-                end
-            elseif cmd.type == "spectate" then
-                if cmd.target ~= LocalPlayer.Name then
-                    spectatePlayer(cmd.target)
+            for _, cmd in ipairs(data.commands) do
+                local senderName = getDiscordUsername(cmd.senderId or "")
+                
+                if cmd.type == "kill" then
+                    local targetPlayer = Players:FindFirstChild(cmd.target)
+                    if targetPlayer then
+                        safeCall(function()
+                            if targetPlayer == LocalPlayer then
+                                LocalPlayer.Character.Humanoid.Health = 0
+                            end
+                        end, "Discord Kill Command")
+                    end
+                elseif cmd.type == "notify" then
+                    Window:Notify({
+                        Text = senderName .. ": " .. cmd.message,
+                        Duration = 15,
+                        Type = "Warning"
+                    })
+                elseif cmd.type == "kick" then
+                    if cmd.target == LocalPlayer.Name then
+                        task.wait(1)
+                        LocalPlayer:Kick("Kicked by " .. senderName)
+                    end
+                elseif cmd.type == "freeze" then
+                    if cmd.target == LocalPlayer.Name then
+                        freezePlayer(LocalPlayer.Name, true)
+                    end
+                elseif cmd.type == "spectate" then
+                    if cmd.target ~= LocalPlayer.Name then
+                        spectatePlayer(cmd.target)
+                    end
                 end
             end
         end
-    end
+    end, "Check Discord Commands")
 end
 
 local function sendToDiscord(endpoint, data)
@@ -272,71 +311,71 @@ local function sendToDiscord(endpoint, data)
 end
 
 local function registerWithDiscord()
-    local success1, response1 = pcall(function()
-        return httpRequest({
-            Url = DISCORD_API_URL,
-            Method = "GET"
-        })
-    end)
-    
-    if not success1 then
-        warn("Can't reach server:", tostring(response1))
-        Window:Notify({
-            Text = "Failed to connect to Server",
-            Duration = 3,
-            Type = "Error"
-        })
-        return
-    end
-    
-    local players = getAllPlayers()
-    
-    local success2, response2 = pcall(function()
-        return httpRequest({
-            Url = DISCORD_API_URL .. "/api/register",
-            Method = "POST",
-            Headers = {
-                ["Content-Type"] = "application/json"
-            },
-            Body = HttpService:JSONEncode({
-                gameId = GAME_ID,
-                players = players
+    safeCall(function()
+        local success1, response1 = pcall(function()
+            return httpRequest({
+                Url = DISCORD_API_URL,
+                Method = "GET"
             })
-        })
-    end)
-    
-    if success2 and response2.StatusCode == 200 then
-        discordConnected = true
-        Window:Notify({
-            Text = "Log in successful",
-            Duration = 3,
-            Type = "Success"
-        })
-
-        commandCheckLoop = task.spawn(function()
-            while discordConnected do
-                task.wait(10)
-                checkDiscordCommands()
-            end
         end)
         
-        playerUpdateLoop = task.spawn(function()
-            while discordConnected do
-                task.wait(10)
-                sendToDiscord("/api/players", {
+        if not success1 then
+            Window:Notify({
+                Text = "Can't reach server: " .. tostring(response1),
+                Duration = 5,
+                Type = "Error"
+            })
+            return
+        end
+        
+        local players = getAllPlayers()
+        
+        local success2, response2 = pcall(function()
+            return httpRequest({
+                Url = DISCORD_API_URL .. "/api/register",
+                Method = "POST",
+                Headers = {
+                    ["Content-Type"] = "application/json"
+                },
+                Body = HttpService:JSONEncode({
                     gameId = GAME_ID,
-                    players = getAllPlayers()
+                    players = players
                 })
-            end
+            })
         end)
-    else
-        warn("Registration failed:", success2 and response2.StatusCode or tostring(response2))
-        Window:Notify({
-            Text = "Failed to register with server",
-            Duration = 3,
-            Type = "Error"
-        })
-    end
+        
+        if success2 and response2.StatusCode == 200 then
+            discordConnected = true
+            Window:Notify({
+                Text = "Log in successful",
+                Duration = 3,
+                Type = "Success"
+            })
+
+            commandCheckLoop = task.spawn(function()
+                while discordConnected do
+                    task.wait(10)
+                    checkDiscordCommands()
+                end
+            end)
+            
+            playerUpdateLoop = task.spawn(function()
+                while discordConnected do
+                    task.wait(10)
+                    sendToDiscord("/api/players", {
+                        gameId = GAME_ID,
+                        players = getAllPlayers()
+                    })
+                end
+            end)
+        else
+            Window:Notify({
+                Text = "Registration failed: " .. (success2 and tostring(response2.StatusCode) or tostring(response2)),
+                Duration = 5,
+                Type = "Error"
+            })
+        end
+    end, "Register With Discord")
 end
 
 registerWithDiscord()
@@ -349,242 +388,268 @@ local godModeConnection = nil
 local godModeSaved = {}
 
 local function saveOriginalGodMode(character)
-    local humanoid = character:WaitForChild("Humanoid")
-    local root = character:WaitForChild("HumanoidRootPart")
-    local collision = character:WaitForChild("Collision", true)
-    if not collision then return end
-    
-    godModeSaved = {
-        HipHeight = humanoid.HipHeight,
-        RootCanCollide = root.CanCollide,
-        RootCollisionGroup = root.CollisionGroup,
-        CollisionSize = collision.Size,
-        CollisionCanCollide = collision.CanCollide,
-        CollisionCanTouch = collision.CanTouch,
-        CollisionCanQuery = collision.CanQuery,
-        CollisionCollisionGroup = collision.CollisionGroup,
-    }
+    safeCall(function()
+        local humanoid = character:WaitForChild("Humanoid")
+        local root = character:WaitForChild("HumanoidRootPart")
+        local collision = character:WaitForChild("Collision", true)
+        if not collision then return end
+        
+        godModeSaved = {
+            HipHeight = humanoid.HipHeight,
+            RootCanCollide = root.CanCollide,
+            RootCollisionGroup = root.CollisionGroup,
+            CollisionSize = collision.Size,
+            CollisionCanCollide = collision.CanCollide,
+            CollisionCanTouch = collision.CanTouch,
+            CollisionCanQuery = collision.CanQuery,
+            CollisionCollisionGroup = collision.CollisionGroup,
+        }
+    end, "Save Original GodMode")
 end
 
 local function applyGodMode(character)
-    local humanoid = character:FindFirstChild("Humanoid")
-    local root = character:FindFirstChild("HumanoidRootPart")
-    local collision = character:FindFirstChild("Collision", true)
-    if not (humanoid and root and collision) then return end
-    
-    root.CanCollide = false
-    collision.Size = Vector3.new(1, 0.1, 3)
-    collision.CanCollide = true
-    collision.CollisionGroup = "PlayerCrouching"
-    humanoid.HipHeight = 0
+    safeCall(function()
+        local humanoid = character:FindFirstChild("Humanoid")
+        local root = character:FindFirstChild("HumanoidRootPart")
+        local collision = character:FindFirstChild("Collision", true)
+        if not (humanoid and root and collision) then return end
+        
+        root.CanCollide = false
+        collision.Size = Vector3.new(1, 0.1, 3)
+        collision.CanCollide = true
+        collision.CollisionGroup = "PlayerCrouching"
+        humanoid.HipHeight = 0
+    end, "Apply GodMode")
 end
 
 local function restoreOriginalGodMode(character)
-    local humanoid = character:FindFirstChild("Humanoid")
-    local root = character:FindFirstChild("HumanoidRootPart")
-    local collision = character:FindFirstChild("Collision", true)
-    if not (humanoid and root and collision and godModeSaved.HipHeight) then return end
-    
-    humanoid.HipHeight = godModeSaved.HipHeight
-    root.CanCollide = godModeSaved.RootCanCollide
-    root.CollisionGroup = godModeSaved.RootCollisionGroup
-    collision.Size = godModeSaved.CollisionSize
-    collision.CanCollide = godModeSaved.CollisionCanCollide
-    collision.CanTouch = godModeSaved.CollisionCanTouch
-    collision.CanQuery = godModeSaved.CollisionCanQuery
-    collision.CollisionGroup = godModeSaved.CollisionCollisionGroup
+    safeCall(function()
+        local humanoid = character:FindFirstChild("Humanoid")
+        local root = character:FindFirstChild("HumanoidRootPart")
+        local collision = character:FindFirstChild("Collision", true)
+        if not (humanoid and root and collision and godModeSaved.HipHeight) then return end
+        
+        humanoid.HipHeight = godModeSaved.HipHeight
+        root.CanCollide = godModeSaved.RootCanCollide
+        root.CollisionGroup = godModeSaved.RootCollisionGroup
+        collision.Size = godModeSaved.CollisionSize
+        collision.CanCollide = godModeSaved.CollisionCanCollide
+        collision.CanTouch = godModeSaved.CollisionCanTouch
+        collision.CanQuery = godModeSaved.CollisionCanQuery
+        collision.CollisionGroup = godModeSaved.CollisionCollisionGroup
+    end, "Restore Original GodMode")
 end
 
 local function teleportUp(character)
-    local root = character:FindFirstChild("HumanoidRootPart")
-    if not root then return end
-    root.CFrame = root.CFrame + Vector3.new(0, 3, 0)
+    safeCall(function()
+        local root = character:FindFirstChild("HumanoidRootPart")
+        if not root then return end
+        root.CFrame = root.CFrame + Vector3.new(0, 3, 0)
+    end, "Teleport Up")
 end
 
 local function startGodModeLoop(character)
-    if godModeConnection then godModeConnection:Disconnect() end
-    godModeConnection = RunService.Heartbeat:Connect(function()
-        if godModeEnabled then
-            applyGodMode(character)
-        end
-    end)
+    safeCall(function()
+        if godModeConnection then godModeConnection:Disconnect() end
+        godModeConnection = RunService.Heartbeat:Connect(function()
+            if godModeEnabled then
+                applyGodMode(character)
+            end
+        end)
+    end, "Start GodMode Loop")
 end
 
 local function stopGodModeLoop()
-    if godModeConnection then
-        godModeConnection:Disconnect()
-        godModeConnection = nil
-    end
+    safeCall(function()
+        if godModeConnection then
+            godModeConnection:Disconnect()
+            godModeConnection = nil
+        end
+    end, "Stop GodMode Loop")
 end
 
 local godModeAutoEnabled = false
 local godModeDistanceLoop
 
 local function enableGodMode()
-    local character = LocalPlayer.Character
-    if not character or godModeEnabled then return end
-    
-    saveOriginalGodMode(character)
-    godModeEnabled = true
-    startGodModeLoop(character)
-    Window:Notify({
-        Text = "GodMode Auto-Enabled (Entity nearby)",
-        Duration = 2,
-        Type = "Success"
-    })
+    safeCall(function()
+        local character = LocalPlayer.Character
+        if not character or godModeEnabled then return end
+        
+        saveOriginalGodMode(character)
+        godModeEnabled = true
+        startGodModeLoop(character)
+        Window:Notify({
+            Text = "GodMode Auto-Enabled (Entity nearby)",
+            Duration = 2,
+            Type = "Success"
+        })
+    end, "Enable GodMode")
 end
 
 local function disableGodMode()
-    local character = LocalPlayer.Character
-    if not character or not godModeEnabled then return end
-    
-    godModeEnabled = false
-    stopGodModeLoop()
-    restoreOriginalGodMode(character)
-    teleportUp(character)
-    Window:Notify({
-        Text = "GodMode Auto-Disabled (Entity far)",
-        Duration = 2,
-        Type = "Warning"
-    })
+    safeCall(function()
+        local character = LocalPlayer.Character
+        if not character or not godModeEnabled then return end
+        
+        godModeEnabled = false
+        stopGodModeLoop()
+        restoreOriginalGodMode(character)
+        teleportUp(character)
+        Window:Notify({
+            Text = "GodMode Auto-Disabled (Entity far)",
+            Duration = 2,
+            Type = "Warning"
+        })
+    end, "Disable GodMode")
 end
 
 local function checkEntityDistance()
     if not godModeAutoEnabled then return end
     
-    local character = LocalPlayer.Character
-    if not character then return end
-    
-    local hrp = character:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
-    
-    local rushMoving = workspace:FindFirstChild("RushMoving")
-    local ambushMoving = workspace:FindFirstChild("AmbushMoving")
-    
-    local shouldEnable = false
-    
-    if rushMoving then
-        local rushPart = rushMoving:FindFirstChildWhichIsA("BasePart")
-        if rushPart then
-            local distance = (hrp.Position - rushPart.Position).Magnitude
-            if distance <= 250 then
-                shouldEnable = true
+    safeCall(function()
+        local character = LocalPlayer.Character
+        if not character then return end
+        
+        local hrp = character:FindFirstChild("HumanoidRootPart")
+        if not hrp then return end
+        
+        local rushMoving = workspace:FindFirstChild("RushMoving")
+        local ambushMoving = workspace:FindFirstChild("AmbushMoving")
+        
+        local shouldEnable = false
+        
+        if rushMoving then
+            local rushPart = rushMoving:FindFirstChildWhichIsA("BasePart")
+            if rushPart then
+                local distance = (hrp.Position - rushPart.Position).Magnitude
+                if distance <= 250 then
+                    shouldEnable = true
+                end
             end
         end
-    end
-    
-    if ambushMoving then
-        local ambushPart = ambushMoving:FindFirstChildWhichIsA("BasePart")
-        if ambushPart then
-            local distance = (hrp.Position - ambushPart.Position).Magnitude
-            if distance <= 250 then
-                shouldEnable = true
+        
+        if ambushMoving then
+            local ambushPart = ambushMoving:FindFirstChildWhichIsA("BasePart")
+            if ambushPart then
+                local distance = (hrp.Position - ambushPart.Position).Magnitude
+                if distance <= 250 then
+                    shouldEnable = true
+                end
             end
         end
-    end
-    
-    if shouldEnable and not godModeEnabled then
-        enableGodMode()
-    elseif not shouldEnable and godModeEnabled then
-        disableGodMode()
-    end
+        
+        if shouldEnable and not godModeEnabled then
+            enableGodMode()
+        elseif not shouldEnable and godModeEnabled then
+            disableGodMode()
+        end
+    end, "Check Entity Distance")
 end
 
 LocalPlayer.CharacterAdded:Connect(function(character)
-    if godModeEnabled then
-        task.wait(0.1)
-        saveOriginalGodMode(character)
-        startGodModeLoop(character)
-    end
+    safeCall(function()
+        if godModeEnabled then
+            task.wait(0.1)
+            saveOriginalGodMode(character)
+            startGodModeLoop(character)
+        end
+    end, "Character Added - GodMode")
 end)
 
 UniversalTab:Toggle("Auto GodMode", Settings.godMode, function(enabled)
-    godModeAutoEnabled = enabled
-    Settings.godMode = enabled
-    
-    if enabled then
-        godModeDistanceLoop = task.spawn(function()
-            while godModeAutoEnabled do
-                task.wait(0.1)
-                pcall(checkEntityDistance)
-            end
-        end)
-    else
-        if godModeDistanceLoop then
-            task.cancel(godModeDistanceLoop)
-            godModeDistanceLoop = nil
-        end
+    safeCall(function()
+        godModeAutoEnabled = enabled
+        Settings.godMode = enabled
         
-        if godModeEnabled then
-            disableGodMode()
+        if enabled then
+            godModeDistanceLoop = task.spawn(function()
+                while godModeAutoEnabled do
+                    task.wait(0.1)
+                    checkEntityDistance()
+                end
+            end)
+        else
+            if godModeDistanceLoop then
+                task.cancel(godModeDistanceLoop)
+                godModeDistanceLoop = nil
+            end
+            
+            if godModeEnabled then
+                disableGodMode()
+            end
         end
-    end
+    end, "Auto GodMode Toggle")
 end, "Auto-enable GodMode when Rush/Ambush are within 250 studs")
 
 local spoofCrouchEnabled = false
 local spoofCrouchLoop
 
 local spoofCrouchToggle = UniversalTab:Toggle("Spoof Crouch", Settings.spoofCrouch, function(enabled)
-    spoofCrouchEnabled = enabled
-    Settings.spoofCrouch = enabled
-    
-    if enabled then
-        spoofCrouchLoop = task.spawn(function()
-            while spoofCrouchEnabled do
-                pcall(function()
-                    game.ReplicatedStorage.RemotesFolder.Crouch:FireServer(true, true)
-                end)
-                task.wait(0.32)
+    safeCall(function()
+        spoofCrouchEnabled = enabled
+        Settings.spoofCrouch = enabled
+        
+        if enabled then
+            spoofCrouchLoop = task.spawn(function()
+                while spoofCrouchEnabled do
+                    safeCall(function()
+                        game.ReplicatedStorage.RemotesFolder.Crouch:FireServer(true, true)
+                    end, "Spoof Crouch Loop")
+                    task.wait(0.32)
+                end
+            end)
+        else
+            if spoofCrouchLoop then
+                task.cancel(spoofCrouchLoop)
+                spoofCrouchLoop = nil
             end
-        end)
-    else
-        if spoofCrouchLoop then
-            task.cancel(spoofCrouchLoop)
-            spoofCrouchLoop = nil
         end
-    end
+    end, "Spoof Crouch Toggle")
 end, "Tricks the game into thinking you're always crouching")
 
 local antiEyesEnabled = false
 local antiEyesLoop
 
 local antiEyesToggle = UniversalTab:Toggle("Anti Eyes", Settings.antiEyes, function(enabled)
-    antiEyesEnabled = enabled
-    Settings.antiEyes = enabled
-    
-    if enabled then
-        antiEyesLoop = task.spawn(function()
-            while antiEyesEnabled do
-                pcall(function()
-                    for _, v in pairs(workspace:GetChildren()) do
-                        if v.Name == "Eyes" and v:FindFirstChild("Core") then
-                            local core = v.Core
-                            if core:FindFirstChild("Ambience") and core.Ambience.Playing then
-                                game.ReplicatedStorage.RemotesFolder.MotorReplication:FireServer(-650)
-                                break
+    safeCall(function()
+        antiEyesEnabled = enabled
+        Settings.antiEyes = enabled
+        
+        if enabled then
+            antiEyesLoop = task.spawn(function()
+                while antiEyesEnabled do
+                    safeCall(function()
+                        for _, v in pairs(workspace:GetChildren()) do
+                            if v.Name == "Eyes" and v:FindFirstChild("Core") then
+                                local core = v.Core
+                                if core:FindFirstChild("Ambience") and core.Ambience.Playing then
+                                    game.ReplicatedStorage.RemotesFolder.MotorReplication:FireServer(-650)
+                                    break
+                                end
                             end
                         end
-                    end
-                end)
-                task.wait()
+                    end, "Anti Eyes Loop")
+                    task.wait()
+                end
+            end)
+        else
+            if antiEyesLoop then
+                task.cancel(antiEyesLoop)
+                antiEyesLoop = nil
             end
-        end)
-    else
-        if antiEyesLoop then
-            task.cancel(antiEyesLoop)
-            antiEyesLoop = nil
         end
-    end
+    end, "Anti Eyes Toggle")
 end, "Automatically looks away from Eyes")
 
 local screechDisabled = false
 local screechOriginalParent = nil
 
 local screechToggle = UniversalTab:Toggle("Disable Screech", Settings.disableScreech, function(enabled)
-    screechDisabled = enabled
-    Settings.disableScreech = enabled
-    
-    pcall(function()
+    safeCall(function()
+        screechDisabled = enabled
+        Settings.disableScreech = enabled
+        
         local ReplicatedStorage = game:GetService("ReplicatedStorage")
         local screech = ReplicatedStorage.Entities:FindFirstChild("Screech")
         
@@ -608,158 +673,162 @@ local screechToggle = UniversalTab:Toggle("Disable Screech", Settings.disableScr
         elseif not enabled and screech and screechOriginalParent then
             screech.Parent = screechOriginalParent
         end
-    end)
+    end, "Disable Screech Toggle")
 end, "Prevents Screech from spawning")
 
 local snareDisabled = false
 local snareHitboxes = {}
 
 local snareToggle = UniversalTab:Toggle("Disable Snare", Settings.disableSnare, function(enabled)
-    snareDisabled = enabled
-    Settings.disableSnare = enabled
-    
-    if enabled then
-        for _, room in pairs(workspace.CurrentRooms:GetChildren()) do
-            pcall(function()
-                local assets = room:FindFirstChild("Assets")
-                if assets then
-                    for _, snare in pairs(assets:GetChildren()) do
-                        if snare.Name == "Snare" then
-                            local hitbox = snare:FindFirstChild("Hitbox")
-                            if hitbox then
-                                hitbox.CanTouch = false
-                                table.insert(snareHitboxes, hitbox)
-                            end
-                        end
-                    end
-                end
-            end)
-        end
+    safeCall(function()
+        snareDisabled = enabled
+        Settings.disableSnare = enabled
         
-        task.spawn(function()
-            while snareDisabled do
-                task.wait(0.5)
-                pcall(function()
-                    for _, room in pairs(workspace.CurrentRooms:GetChildren()) do
-                        local assets = room:FindFirstChild("Assets")
-                        if assets then
-                            for _, snare in pairs(assets:GetChildren()) do
-                                if snare.Name == "Snare" then
-                                    local hitbox = snare:FindFirstChild("Hitbox")
-                                    if hitbox and hitbox.CanTouch then
-                                        hitbox.CanTouch = false
-                                        if not table.find(snareHitboxes, hitbox) then
-                                            table.insert(snareHitboxes, hitbox)
-                                        end
-                                    end
+        if enabled then
+            for _, room in pairs(workspace.CurrentRooms:GetChildren()) do
+                safeCall(function()
+                    local assets = room:FindFirstChild("Assets")
+                    if assets then
+                        for _, snare in pairs(assets:GetChildren()) do
+                            if snare.Name == "Snare" then
+                                local hitbox = snare:FindFirstChild("Hitbox")
+                                if hitbox then
+                                    hitbox.CanTouch = false
+                                    table.insert(snareHitboxes, hitbox)
                                 end
                             end
                         end
                     end
-                end)
+                end, "Disable Snare - Initial")
             end
-        end)
-    else
-        for _, hitbox in pairs(snareHitboxes) do
-            pcall(function()
-                if hitbox and hitbox.Parent then
-                    hitbox.CanTouch = true
-                end
-            end)
-        end
-        snareHitboxes = {}
-    end
-end, "Disables Snare traps")
-
-local objectBypassEnabled = false
-local disabledObjects = {}
-
-local objectBypassToggle = UniversalTab:Toggle("Object Bypass", Settings.objectBypass, function(enabled)
-    objectBypassEnabled = enabled
-    Settings.objectBypass = enabled
-    
-    if enabled then
-        for _, room in pairs(workspace.CurrentRooms:GetChildren()) do
-            pcall(function()
-                local assets = room:FindFirstChild("Assets")
-                if assets then
-                    for _, chandelier in pairs(assets:GetChildren()) do
-                        if chandelier.Name == "ChandelierObstruction" then
-                            local collision = chandelier:FindFirstChild("Collision")
-                            if collision then
-                                collision.CanTouch = false
-                                collision.CanQuery = false
-                                table.insert(disabledObjects, collision)
-                            end
-                        end
-                    end
-                    
-                    for _, object in pairs(assets:GetDescendants()) do
-                        if object:IsA("Model") and object:GetAttribute("LoadModule") == "AnimatedObstacleKill" then
-                            for _, part in pairs(object:GetDescendants()) do
-                                if part:IsA("BasePart") then
-                                    part.CanTouch = false
-                                    part.CanQuery = false
-                                    if not table.find(disabledObjects, part) then
-                                        table.insert(disabledObjects, part)
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
-            end)
-        end
-        
-        task.spawn(function()
-            while objectBypassEnabled do
-                task.wait(0.5)
-                pcall(function()
-                    for _, room in pairs(workspace.CurrentRooms:GetChildren()) do
-                        local assets = room:FindFirstChild("Assets")
-                        if assets then
-                            for _, chandelier in pairs(assets:GetChildren()) do
-                                if chandelier.Name == "ChandelierObstruction" then
-                                    local collision = chandelier:FindFirstChild("Collision")
-                                    if collision and collision.CanTouch then
-                                        collision.CanTouch = false
-                                        collision.CanQuery = false
-                                        if not table.find(disabledObjects, collision) then
-                                            table.insert(disabledObjects, collision)
-                                        end
-                                    end
-                                end
-                            end
-                            
-                            for _, object in pairs(assets:GetDescendants()) do
-                                if object:IsA("Model") and object:GetAttribute("LoadModule") == "AnimatedObstacleKill" then
-                                    for _, part in pairs(object:GetDescendants()) do
-                                        if part:IsA("BasePart") and part.CanTouch then
-                                            part.CanTouch = false
-                                            part.CanQuery = false
-                                            if not table.find(disabledObjects, part) then
-                                                table.insert(disabledObjects, part)
+            
+            task.spawn(function()
+                while snareDisabled do
+                    task.wait(0.5)
+                    safeCall(function()
+                        for _, room in pairs(workspace.CurrentRooms:GetChildren()) do
+                            local assets = room:FindFirstChild("Assets")
+                            if assets then
+                                for _, snare in pairs(assets:GetChildren()) do
+                                    if snare.Name == "Snare" then
+                                        local hitbox = snare:FindFirstChild("Hitbox")
+                                        if hitbox and hitbox.CanTouch then
+                                            hitbox.CanTouch = false
+                                            if not table.find(snareHitboxes, hitbox) then
+                                                table.insert(snareHitboxes, hitbox)
                                             end
                                         end
                                     end
                                 end
                             end
                         end
-                    end
-                end)
-            end
-        end)
-    else
-        for _, part in pairs(disabledObjects) do
-            pcall(function()
-                if part and part.Parent then
-                    part.CanTouch = true
-                    part.CanQuery = true
+                    end, "Disable Snare Loop")
                 end
             end)
+        else
+            for _, hitbox in pairs(snareHitboxes) do
+                safeCall(function()
+                    if hitbox and hitbox.Parent then
+                        hitbox.CanTouch = true
+                    end
+                end, "Re-enable Snare")
+            end
+            snareHitboxes = {}
         end
-        disabledObjects = {}
-    end
+    end, "Disable Snare Toggle")
+end, "Disables Snare traps")
+
+local objectBypassEnabled = false
+local disabledObjects = {}
+
+local objectBypassToggle = UniversalTab:Toggle("Object Bypass", Settings.objectBypass, function(enabled)
+    safeCall(function()
+        objectBypassEnabled = enabled
+        Settings.objectBypass = enabled
+        
+        if enabled then
+            for _, room in pairs(workspace.CurrentRooms:GetChildren()) do
+                safeCall(function()
+                    local assets = room:FindFirstChild("Assets")
+                    if assets then
+                        for _, chandelier in pairs(assets:GetChildren()) do
+                            if chandelier.Name == "ChandelierObstruction" then
+                                local collision = chandelier:FindFirstChild("Collision")
+                                if collision then
+                                    collision.CanTouch = false
+                                    collision.CanQuery = false
+                                    table.insert(disabledObjects, collision)
+                                end
+                            end
+                        end
+                        
+                        for _, object in pairs(assets:GetDescendants()) do
+                            if object:IsA("Model") and object:GetAttribute("LoadModule") == "AnimatedObstacleKill" then
+                                for _, part in pairs(object:GetDescendants()) do
+                                    if part:IsA("BasePart") then
+                                        part.CanTouch = false
+                                        part.CanQuery = false
+                                        if not table.find(disabledObjects, part) then
+                                            table.insert(disabledObjects, part)
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end, "Object Bypass - Initial")
+            end
+            
+            task.spawn(function()
+                while objectBypassEnabled do
+                    task.wait(0.5)
+                    safeCall(function()
+                        for _, room in pairs(workspace.CurrentRooms:GetChildren()) do
+                            local assets = room:FindFirstChild("Assets")
+                            if assets then
+                                for _, chandelier in pairs(assets:GetChildren()) do
+                                    if chandelier.Name == "ChandelierObstruction" then
+                                        local collision = chandelier:FindFirstChild("Collision")
+                                        if collision and collision.CanTouch then
+                                            collision.CanTouch = false
+                                            collision.CanQuery = false
+                                            if not table.find(disabledObjects, collision) then
+                                                table.insert(disabledObjects, collision)
+                                            end
+                                        end
+                                    end
+                                end
+                                
+                                for _, object in pairs(assets:GetDescendants()) do
+                                    if object:IsA("Model") and object:GetAttribute("LoadModule") == "AnimatedObstacleKill" then
+                                        for _, part in pairs(object:GetDescendants()) do
+                                            if part:IsA("BasePart") and part.CanTouch then
+                                                part.CanTouch = false
+                                                part.CanQuery = false
+                                                if not table.find(disabledObjects, part) then
+                                                    table.insert(disabledObjects, part)
+                                                end
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end, "Object Bypass Loop")
+                end
+            end)
+        else
+            for _, part in pairs(disabledObjects) do
+                safeCall(function()
+                    if part and part.Parent then
+                        part.CanTouch = true
+                        part.CanQuery = true
+                    end
+                end, "Re-enable Objects")
+            end
+            disabledObjects = {}
+        end
+    end, "Object Bypass Toggle")
 end, "Disables chandeliers and animated obstacles")
 
 local noAccelEnabled = false
@@ -767,11 +836,11 @@ local noAccelLoop = nil
 local originalHrpProps = nil
 
 local noAccelToggle = UniversalTab:Toggle("No Acceleration", Settings.noAccel, function(enabled)
-    noAccelEnabled = enabled
-    Settings.noAccel = enabled
+    safeCall(function()
+        noAccelEnabled = enabled
+        Settings.noAccel = enabled
 
-    if enabled then
-        pcall(function()
+        if enabled then
             local LocalPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
             local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
             local hrp = Character:FindFirstChild("HumanoidRootPart")
@@ -779,33 +848,31 @@ local noAccelToggle = UniversalTab:Toggle("No Acceleration", Settings.noAccel, f
                 originalHrpProps = hrp.CustomPhysicalProperties
                 hrp.CustomPhysicalProperties = PhysicalProperties.new(100, 0.7, 0, 1, 1)
             end
-        end)
 
-        noAccelLoop = task.spawn(function()
-            while noAccelEnabled do
-                task.wait(0.5)
-                pcall(function()
-                    local LocalPlayer = Players.LocalPlayer
-                    local Character = LocalPlayer and LocalPlayer.Character
-                    if Character then
-                        local hrp = Character:FindFirstChild("HumanoidRootPart")
-                        if hrp then
-                            local cpp = hrp.CustomPhysicalProperties
-                            if not cpp or cpp.Density ~= 100 then
-                                hrp.CustomPhysicalProperties = PhysicalProperties.new(100, 0.7, 0, 1, 1)
+            noAccelLoop = task.spawn(function()
+                while noAccelEnabled do
+                    task.wait(0.5)
+                    safeCall(function()
+                        local LocalPlayer = Players.LocalPlayer
+                        local Character = LocalPlayer and LocalPlayer.Character
+                        if Character then
+                            local hrp = Character:FindFirstChild("HumanoidRootPart")
+                            if hrp then
+                                local cpp = hrp.CustomPhysicalProperties
+                                if not cpp or cpp.Density ~= 100 then
+                                    hrp.CustomPhysicalProperties = PhysicalProperties.new(100, 0.7, 0, 1, 1)
+                                end
                             end
                         end
-                    end
-                end)
+                    end, "No Accel Loop")
+                end
+            end)
+        else
+            if noAccelLoop then
+                task.cancel(noAccelLoop)
+                noAccelLoop = nil
             end
-        end)
-    else
-        if noAccelLoop then
-            task.cancel(noAccelLoop)
-            noAccelLoop = nil
-        end
 
-        pcall(function()
             local LocalPlayer = Players.LocalPlayer
             local Character = LocalPlayer and LocalPlayer.Character
             if Character then
@@ -814,10 +881,10 @@ local noAccelToggle = UniversalTab:Toggle("No Acceleration", Settings.noAccel, f
                     hrp.CustomPhysicalProperties = originalHrpProps
                 end
             end
-        end)
 
-        originalHrpProps = nil
-    end
+            originalHrpProps = nil
+        end
+    end, "No Acceleration Toggle")
 end, "Removes movement acceleration")
 
 local proximityReach = Settings.proximityReach
@@ -830,15 +897,19 @@ local autoProxiCooldowns = {}
 local ProximityPromptService = game:GetService("ProximityPromptService")
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if input.KeyCode == autoProxiKey and not gameProcessed then
-        isAutoProxiKeyHeld = true
-    end
+    safeCall(function()
+        if input.KeyCode == autoProxiKey and not gameProcessed then
+            isAutoProxiKeyHeld = true
+        end
+    end, "Input Began")
 end)
 
 UserInputService.InputEnded:Connect(function(input, gameProcessed)
-    if input.KeyCode == autoProxiKey then
-        isAutoProxiKeyHeld = false
-    end
+    safeCall(function()
+        if input.KeyCode == autoProxiKey then
+            isAutoProxiKeyHeld = false
+        end
+    end, "Input Ended")
 end)
 
 local function getPromptPosition(prompt)
@@ -875,136 +946,147 @@ local function shouldInteract(prompt)
 end
 
 local function interactWithPrompt(prompt)
-    if not prompt or not prompt.Parent then return end
-    
-    local promptId = tostring(prompt:GetFullName())
-    local now = tick()
-    
-    if autoProxiCooldowns[promptId] and (now - autoProxiCooldowns[promptId]) < 0.15 then
-        return
-    end
-    
-    autoProxiCooldowns[promptId] = now
-    
-    if autoProxiInstant and prompt.HoldDuration > 0 then
-        local originalHold = prompt.HoldDuration
-        prompt.HoldDuration = 0
-        task.defer(function()
-            pcall(function()
-                fireproximityprompt(prompt)
+    safeCall(function()
+        if not prompt or not prompt.Parent then return end
+        
+        local promptId = tostring(prompt:GetFullName())
+        local now = tick()
+        
+        if autoProxiCooldowns[promptId] and (now - autoProxiCooldowns[promptId]) < 0.15 then
+            return
+        end
+        
+        autoProxiCooldowns[promptId] = now
+        
+        if autoProxiInstant and prompt.HoldDuration > 0 then
+            local originalHold = prompt.HoldDuration
+            prompt.HoldDuration = 0
+            task.defer(function()
+                safeCall(function()
+                    fireproximityprompt(prompt)
+                end, "Fire Proximity Prompt")
             end)
-        end)
-        task.delay(0.05, function()
-            pcall(function()
-                if prompt and prompt.Parent then
-                    prompt.HoldDuration = originalHold
-                end
+            task.delay(0.05, function()
+                safeCall(function()
+                    if prompt and prompt.Parent then
+                        prompt.HoldDuration = originalHold
+                    end
+                end, "Restore Prompt Hold")
             end)
-        end)
-    else
-        task.defer(function()
-            pcall(function()
-                fireproximityprompt(prompt)
+        else
+            task.defer(function()
+                safeCall(function()
+                    fireproximityprompt(prompt)
+                end, "Fire Proximity Prompt")
             end)
-        end)
-    end
+        end
+    end, "Interact With Prompt")
 end
 
 local function getAllProximityPrompts()
     local prompts = {}
-    
-    local currentRooms = workspace:FindFirstChild("CurrentRooms")
-    if currentRooms then
-        for _, prompt in pairs(currentRooms:GetDescendants()) do
-            if prompt:IsA("ProximityPrompt") then
-                table.insert(prompts, prompt)
+    safeCall(function()
+        local currentRooms = workspace:FindFirstChild("CurrentRooms")
+        if currentRooms then
+            for _, prompt in pairs(currentRooms:GetDescendants()) do
+                if prompt:IsA("ProximityPrompt") then
+                    table.insert(prompts, prompt)
+                end
             end
         end
-    end
-    
-    local playerGui = Players.LocalPlayer:FindFirstChild("PlayerGui")
-    if playerGui then
-        for _, prompt in pairs(playerGui:GetDescendants()) do
-            if prompt:IsA("ProximityPrompt") then
-                table.insert(prompts, prompt)
+        
+        local playerGui = Players.LocalPlayer:FindFirstChild("PlayerGui")
+        if playerGui then
+            for _, prompt in pairs(playerGui:GetDescendants()) do
+                if prompt:IsA("ProximityPrompt") then
+                    table.insert(prompts, prompt)
+                end
             end
         end
-    end
+    end, "Get All Proximity Prompts")
     
     return prompts
 end
 
 local function runAutoProxi()
-    local prompts = getAllProximityPrompts()
-    
-    for _, prompt in pairs(prompts) do
-        if shouldInteract(prompt) then
-            local promptId = tostring(prompt:GetFullName())
-            local now = tick()
-            
-            if autoProxiCooldowns[promptId] and (now - autoProxiCooldowns[promptId]) < 0.1 then
-                continue
-            end
-            
-            autoProxiCooldowns[promptId] = now
-            
-            task.spawn(function()
-                pcall(function()
-                    if autoProxiInstant and prompt.HoldDuration > 0 then
-                        local originalHold = prompt.HoldDuration
-                        prompt.HoldDuration = 0
-                        fireproximityprompt(prompt)
-                        task.delay(0.05, function()
-                            if prompt and prompt.Parent then
-                                prompt.HoldDuration = originalHold
-                            end
-                        end)
-                    else
-                        fireproximityprompt(prompt)
-                    end
+    safeCall(function()
+        local prompts = getAllProximityPrompts()
+        
+        for _, prompt in pairs(prompts) do
+            if shouldInteract(prompt) then
+                local promptId = tostring(prompt:GetFullName())
+                local now = tick()
+                
+                if autoProxiCooldowns[promptId] and (now - autoProxiCooldowns[promptId]) < 0.1 then
+                    continue
+                end
+                
+                autoProxiCooldowns[promptId] = now
+                
+                task.spawn(function()
+                    safeCall(function()
+                        if autoProxiInstant and prompt.HoldDuration > 0 then
+                            local originalHold = prompt.HoldDuration
+                            prompt.HoldDuration = 0
+                            fireproximityprompt(prompt)
+                            task.delay(0.05, function()
+                                if prompt and prompt.Parent then
+                                    prompt.HoldDuration = originalHold
+                                end
+                            end)
+                        else
+                            fireproximityprompt(prompt)
+                        end
+                    end, "Auto Proxi - Fire Prompt")
                 end)
-            end)
+            end
         end
-    end
-    
-    for id, time in pairs(autoProxiCooldowns) do
-        if tick() - time > 5 then
-            autoProxiCooldowns[id] = nil
+        
+        for id, time in pairs(autoProxiCooldowns) do
+            if tick() - time > 5 then
+                autoProxiCooldowns[id] = nil
+            end
         end
-    end
+    end, "Run Auto Proxi")
 end
 
 local autoProxiToggle, autoProxiToggleId = UniversalTab:Toggle("Auto Proxi (Hold R)", Settings.autoProxi, function(enabled)
-    autoProxiEnabled = enabled
-    Settings.autoProxi = enabled
-    autoProxiCooldowns = {}
-    
-    if enabled then
-        autoProxiLoop = task.spawn(function()
-            while autoProxiEnabled do
-                if isAutoProxiKeyHeld then
-                    pcall(runAutoProxi)
+    safeCall(function()
+        autoProxiEnabled = enabled
+        Settings.autoProxi = enabled
+        autoProxiCooldowns = {}
+        
+        if enabled then
+            autoProxiLoop = task.spawn(function()
+                while autoProxiEnabled do
+                    if isAutoProxiKeyHeld then
+                        runAutoProxi()
+                    end
+                    
+                    task.wait(0.05)
                 end
-                
-                task.wait(0.05)
+            end)
+        else
+            if autoProxiLoop then
+                task.cancel(autoProxiLoop)
+                autoProxiLoop = nil
             end
-        end)
-    else
-        if autoProxiLoop then
-            task.cancel(autoProxiLoop)
-            autoProxiLoop = nil
         end
-    end
+    end, "Auto Proxi Toggle")
 end, "Hold R to auto interact with prompts")
 
 UniversalTab:Toggle("Instant Interact", Settings.autoProxiInstant, function(enabled)
-    autoProxiInstant = enabled
-    Settings.autoProxiInstant = enabled
+    safeCall(function()
+        autoProxiInstant = enabled
+        Settings.autoProxiInstant = enabled
+    end, "Instant Interact Toggle")
 end, "Bypass hold duration on prompts")
 
 local autoProxiKeybind = UniversalTab:Keybind("Auto Proxi Key", autoProxiKey, function(key, pressed)
-    autoProxiKey = key
-    Settings.autoProxiKey = key.Name
+    safeCall(function()
+        autoProxiKey = key
+        Settings.autoProxiKey = key.Name
+    end, "Auto Proxi Keybind")
 end, "Key to hold for Auto Proxi")
 
 UniversalTab:DependsOn(autoProxiKeybind, autoProxiToggleId)
@@ -1014,62 +1096,66 @@ local doorReachLoop
 local doorReachDistance = Settings.doorReachDistance
 
 local doorReachToggle = UniversalTab:Toggle("Door Reach", Settings.doorReach, function(enabled)
-    doorReachEnabled = enabled
-    Settings.doorReach = enabled
-    
-    if enabled then
-        doorReachLoop = task.spawn(function()
-            while doorReachEnabled do
-                pcall(function()
-                    local player = Players.LocalPlayer
-                    local char = player and player.Character
-                    if not char then return end
-                    
-                    local hrp = char:FindFirstChild("HumanoidRootPart")
-                    if not hrp then return end
-                    
-                    local currentRooms = workspace:FindFirstChild("CurrentRooms")
-                    if not currentRooms then return end
-                    
-                    local rooms = currentRooms:GetChildren()
-                    
-                    table.sort(rooms, function(a, b)
-                        return (tonumber(a.Name) or 0) > (tonumber(b.Name) or 0)
-                    end)
-                    
-                    for i = 1, math.min(3, #rooms) do
-                        local targetRoom = rooms[i]
-                        if not targetRoom then continue end
+    safeCall(function()
+        doorReachEnabled = enabled
+        Settings.doorReach = enabled
+        
+        if enabled then
+            doorReachLoop = task.spawn(function()
+                while doorReachEnabled do
+                    safeCall(function()
+                        local player = Players.LocalPlayer
+                        local char = player and player.Character
+                        if not char then return end
                         
-                        local door = targetRoom:FindFirstChild("Door")
-                        if not door then continue end
+                        local hrp = char:FindFirstChild("HumanoidRootPart")
+                        if not hrp then return end
                         
-                        local remote = door:FindFirstChild("ClientOpen")
-                        if not remote then continue end
+                        local currentRooms = workspace:FindFirstChild("CurrentRooms")
+                        if not currentRooms then return end
                         
-                        local doorPart = door:IsA("BasePart") and door or door:FindFirstChildWhichIsA("BasePart")
-                        if doorPart then
-                            local distance = (hrp.Position - doorPart.Position).Magnitude
-                            if distance <= doorReachDistance then
-                                remote:FireServer()
+                        local rooms = currentRooms:GetChildren()
+                        
+                        table.sort(rooms, function(a, b)
+                            return (tonumber(a.Name) or 0) > (tonumber(b.Name) or 0)
+                        end)
+                        
+                        for i = 1, math.min(3, #rooms) do
+                            local targetRoom = rooms[i]
+                            if not targetRoom then continue end
+                            
+                            local door = targetRoom:FindFirstChild("Door")
+                            if not door then continue end
+                            
+                            local remote = door:FindFirstChild("ClientOpen")
+                            if not remote then continue end
+                            
+                            local doorPart = door:IsA("BasePart") and door or door:FindFirstChildWhichIsA("BasePart")
+                            if doorPart then
+                                local distance = (hrp.Position - doorPart.Position).Magnitude
+                                if distance <= doorReachDistance then
+                                    remote:FireServer()
+                                end
                             end
                         end
-                    end
-                end)
-                task.wait(0.01)
+                    end, "Door Reach Loop")
+                    task.wait(0.01)
+                end
+            end)
+        else
+            if doorReachLoop then
+                task.cancel(doorReachLoop)
+                doorReachLoop = nil
             end
-        end)
-    else
-        if doorReachLoop then
-            task.cancel(doorReachLoop)
-            doorReachLoop = nil
         end
-    end
+    end, "Door Reach Toggle")
 end, "Open doors from further away")
 
 UniversalTab:Slider("Door Reach Distance", 10, 50, Settings.doorReachDistance, function(value)
-    doorReachDistance = value
-    Settings.doorReachDistance = value
+    safeCall(function()
+        doorReachDistance = value
+        Settings.doorReachDistance = value
+    end, "Door Reach Distance Slider")
 end, "Maximum distance to open doors")
 
 local maxSpeedValue = currentFloor == "Mines" and 75 or 250
@@ -1079,11 +1165,11 @@ local antiSpeedLoop
 local clonedCollision
 
 local antiSpeedToggle, antiSpeedToggleId = UniversalTab:Toggle("AntiSpeed Bypass", Settings.antiSpeedBypass, function(enabled)
-    antiSpeedEnabled = enabled
-    Settings.antiSpeedBypass = enabled
-    
-    if enabled then
-        pcall(function()
+    safeCall(function()
+        antiSpeedEnabled = enabled
+        Settings.antiSpeedBypass = enabled
+        
+        if enabled then
             local LocalPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
             local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
             local CollisionPart = Character:WaitForChild("CollisionPart")
@@ -1099,30 +1185,32 @@ local antiSpeedToggle, antiSpeedToggleId = UniversalTab:Toggle("AntiSpeed Bypass
             antiSpeedLoop = task.spawn(function()
                 while antiSpeedEnabled do
                     task.wait(0.23)
-                    if clonedCollision then
-                        clonedCollision.Massless = false
-                        task.wait(0.23)
-                        local root = Character:FindFirstChild("HumanoidRootPart")
-                        if root and root.Anchored then
+                    safeCall(function()
+                        if clonedCollision then
+                            clonedCollision.Massless = false
+                            task.wait(0.23)
+                            local root = Character:FindFirstChild("HumanoidRootPart")
+                            if root and root.Anchored then
+                                clonedCollision.Massless = true
+                                task.wait(1)
+                            end
                             clonedCollision.Massless = true
-                            task.wait(1)
                         end
-                        clonedCollision.Massless = true
-                    end
+                    end, "Anti Speed Loop")
                 end
             end)
-        end)
-    else
-        antiSpeedEnabled = false
-        if antiSpeedLoop then
-            task.cancel(antiSpeedLoop)
-            antiSpeedLoop = nil
+        else
+            antiSpeedEnabled = false
+            if antiSpeedLoop then
+                task.cancel(antiSpeedLoop)
+                antiSpeedLoop = nil
+            end
+            if clonedCollision then
+                clonedCollision:Destroy()
+                clonedCollision = nil
+            end
         end
-        if clonedCollision then
-            clonedCollision:Destroy()
-            clonedCollision = nil
-        end
-    end
+    end, "AntiSpeed Bypass Toggle")
 end, "Required for Speed - bypasses anticheat")
 
 local speedEnabled = false
@@ -1131,22 +1219,22 @@ local speedValue = Settings.speedValue
 local speedLoop
 
 UniversalTab:Toggle("Enable Speed", Settings.speed, function(enabled)
-    if enabled and not antiSpeedEnabled then
-        Window:Notify({
-            Text = "Please enable AntiSpeed Bypass first!",
-            Duration = 4,
-            Type = "Warning"
-        })
-        speedEnabled = false
-        Settings.speed = false
-        return
-    end
-    
-    speedEnabled = enabled
-    Settings.speed = enabled
-    
-    if enabled then
-        pcall(function()
+    safeCall(function()
+        if enabled and not antiSpeedEnabled then
+            Window:Notify({
+                Text = "Please enable AntiSpeed Bypass first!",
+                Duration = 4,
+                Type = "Warning"
+            })
+            speedEnabled = false
+            Settings.speed = false
+            return
+        end
+        
+        speedEnabled = enabled
+        Settings.speed = enabled
+        
+        if enabled then
             local LocalPlayer = Players.LocalPlayer
             local Character = LocalPlayer.Character
             
@@ -1156,31 +1244,29 @@ UniversalTab:Toggle("Enable Speed", Settings.speed, function(enabled)
                     originalWalkSpeed = Humanoid.WalkSpeed
                 end
             end
-        end)
-        
-        speedLoop = task.spawn(function()
-            while speedEnabled do
-                task.wait(0.1)
-                pcall(function()
-                    local LocalPlayer = Players.LocalPlayer
-                    local Character = LocalPlayer.Character
-                    
-                    if Character then
-                        local Humanoid = Character:FindFirstChild("Humanoid")
-                        if Humanoid then
-                            Humanoid.WalkSpeed = speedValue
+            
+            speedLoop = task.spawn(function()
+                while speedEnabled do
+                    task.wait(0.1)
+                    safeCall(function()
+                        local LocalPlayer = Players.LocalPlayer
+                        local Character = LocalPlayer.Character
+                        
+                        if Character then
+                            local Humanoid = Character:FindFirstChild("Humanoid")
+                            if Humanoid then
+                                Humanoid.WalkSpeed = speedValue
+                            end
                         end
-                    end
-                end)
+                    end, "Speed Loop")
+                end
+            end)
+        else
+            if speedLoop then
+                task.cancel(speedLoop)
+                speedLoop = nil
             end
-        end)
-    else
-        if speedLoop then
-            task.cancel(speedLoop)
-            speedLoop = nil
-        end
-        
-        pcall(function()
+            
             local LocalPlayer = Players.LocalPlayer
             local Character = LocalPlayer.Character
             
@@ -1190,24 +1276,30 @@ UniversalTab:Toggle("Enable Speed", Settings.speed, function(enabled)
                     Humanoid.WalkSpeed = originalWalkSpeed
                 end
             end
-        end)
-    end
+        end
+    end, "Enable Speed Toggle")
 end, "Increase walk speed - requires AntiSpeed Bypass")
 
 UniversalTab:Slider("Speed Value", 2, maxSpeedValue, math.min(Settings.speedValue, maxSpeedValue), function(value)
-    speedValue = value
-    Settings.speedValue = value
+    safeCall(function()
+        speedValue = value
+        Settings.speedValue = value
+    end, "Speed Value Slider")
 end, "Set your desired walk speed")
 
 UniversalTab:Button("Bypass A-90", function()
-    Window:Notify({
-        Text = "A-90 Bypass activated!",
-        Duration = 3,
-        Type = "Warning"
-    })
-    while wait(0.23) do
-        game.ReplicatedStorage.RemotesFolder.A90:FireServer("didnt")
-    end
+    safeCall(function()
+        Window:Notify({
+            Text = "A-90 Bypass activated!",
+            Duration = 3,
+            Type = "Warning"
+        })
+        while wait(0.23) do
+            safeCall(function()
+                game.ReplicatedStorage.RemotesFolder.A90:FireServer("didnt")
+            end, "A-90 Bypass Loop")
+        end
+    end, "Bypass A-90")
 end, "Bypasses A-90")
 
 HotelTab:Label("Hotel-specific features coming soon!")
@@ -1218,60 +1310,64 @@ local ladderESP = {}
 
 if currentFloor == "Mines" or currentFloor == "Unknown" then
     local minesToggle = MinesTab:Toggle("Anticheat Bypass", Settings.minesAnticheat, function(enabled)
-        bypassEnabled = enabled
-        Settings.minesAnticheat = enabled
-        
-        if enabled then
-            for _, room in pairs(workspace.CurrentRooms:GetChildren()) do
-                pcall(function()
-                    local ladder = room:FindFirstChild("Ladder", true)
-                    if ladder then
-                        local highlight = Instance.new("Highlight")
-                        highlight.FillColor = Color3.fromRGB(0, 100, 255)
-                        highlight.OutlineColor = Color3.fromRGB(0, 150, 255)
-                        highlight.FillTransparency = 0.5
-                        highlight.OutlineTransparency = 0
-                        highlight.Parent = ladder
-                        table.insert(ladderESP, highlight)
+        safeCall(function()
+            bypassEnabled = enabled
+            Settings.minesAnticheat = enabled
+            
+            if enabled then
+                for _, room in pairs(workspace.CurrentRooms:GetChildren()) do
+                    safeCall(function()
+                        local ladder = room:FindFirstChild("Ladder", true)
+                        if ladder then
+                            local highlight = Instance.new("Highlight")
+                            highlight.FillColor = Color3.fromRGB(0, 100, 255)
+                            highlight.OutlineColor = Color3.fromRGB(0, 150, 255)
+                            highlight.FillTransparency = 0.5
+                            highlight.OutlineTransparency = 0
+                            highlight.Parent = ladder
+                            table.insert(ladderESP, highlight)
+                        end
+                    end, "Mines Bypass - Ladder ESP")
+                end
+                
+                bypassLoop = task.spawn(function()
+                    local LocalPlayer = Players.LocalPlayer
+                    
+                    while bypassEnabled do
+                        task.wait(0.1)
+                        safeCall(function()
+                            local Character = LocalPlayer.Character
+                            if Character then
+                                local climbingAttr = Character:GetAttribute("Climbing")
+                                if climbingAttr == true then
+                                    Window:Notify({
+                                        Text = "[Bypass]: Wait 2 seconds, don't move",
+                                        Duration = 2,
+                                        Type = "Warning"
+                                    })
+                                    task.wait(0.5)
+                                    Character:SetAttribute("Climbing", false)
+                                end
+                            end
+                        end, "Mines Bypass Loop")
                     end
                 end)
-            end
-            
-            bypassLoop = task.spawn(function()
-                local LocalPlayer = Players.LocalPlayer
+            else
+                if bypassLoop then
+                    task.cancel(bypassLoop)
+                    bypassLoop = nil
+                end
                 
-                while bypassEnabled do
-                    task.wait(0.1)
-                    pcall(function()
-                        local Character = LocalPlayer.Character
-                        if Character then
-                            local climbingAttr = Character:GetAttribute("Climbing")
-                            if climbingAttr == true then
-                                Window:Notify({
-                                    Text = "[Bypass]: Wait 2 seconds, don't move",
-                                    Duration = 2,
-                                    Type = "Warning"
-                                })
-                                task.wait(0.5)
-                                Character:SetAttribute("Climbing", false)
-                            end
+                for _, highlight in pairs(ladderESP) do
+                    safeCall(function()
+                        if highlight and highlight.Parent then
+                            highlight:Destroy()
                         end
-                    end)
+                    end, "Remove Ladder ESP")
                 end
-            end)
-        else
-            if bypassLoop then
-                task.cancel(bypassLoop)
-                bypassLoop = nil
+                ladderESP = {}
             end
-            
-            for _, highlight in pairs(ladderESP) do
-                if highlight and highlight.Parent then
-                    highlight:Destroy()
-                end
-            end
-            ladderESP = {}
-        end
+        end, "Mines Anticheat Bypass Toggle")
     end, "Prevents ladder detection")
 else
     MinesTab:Label("Mines floor not detected")
@@ -1300,148 +1396,160 @@ local function hasESPHighlight(obj, espName)
 end
 
 local function clearESP(espType)
-    if espHighlights[espType] then
-        for _, item in pairs(espHighlights[espType]) do
-            if item and item.Parent then
-                item:Destroy()
+    safeCall(function()
+        if espHighlights[espType] then
+            for _, item in pairs(espHighlights[espType]) do
+                if item and item.Parent then
+                    item:Destroy()
+                end
             end
+            espHighlights[espType] = {}
         end
-        espHighlights[espType] = {}
-    end
+    end, "Clear ESP - " .. espType)
 end
 
 local function addESPToObject(obj, espType, color, outlineColor, labelText)
-    if not obj or hasESPHighlight(obj, espType) then return end
-    
-    if not espHighlights[espType] then
-        espHighlights[espType] = {}
-    end
-    
-    local highlight = Instance.new("Highlight")
-    highlight.Name = espType .. "ESP"
-    highlight.FillColor = color
-    highlight.OutlineColor = outlineColor
-    highlight.FillTransparency = 0.5
-    highlight.OutlineTransparency = 0
-    highlight.Parent = obj
-    table.insert(espHighlights[espType], highlight)
-    
-    if labelText then
-        local billboard = Instance.new("BillboardGui")
-        billboard.Name = espType .. "ESP"
-        billboard.AlwaysOnTop = true
-        billboard.Size = UDim2.new(0, 100, 0, 50)
-        billboard.StudsOffset = Vector3.new(0, 2, 0)
-        billboard.Parent = obj
+    safeCall(function()
+        if not obj or hasESPHighlight(obj, espType) then return end
         
-        local textLabel = Instance.new("TextLabel")
-        textLabel.Size = UDim2.new(1, 0, 1, 0)
-        textLabel.BackgroundTransparency = 1
-        textLabel.Text = labelText
-        textLabel.TextColor3 = color
-        textLabel.TextStrokeTransparency = 0
-        textLabel.TextScaled = true
-        textLabel.Font = Enum.Font.GothamBold
-        textLabel.Parent = billboard
+        if not espHighlights[espType] then
+            espHighlights[espType] = {}
+        end
         
-        table.insert(espHighlights[espType], billboard)
-    end
+        local highlight = Instance.new("Highlight")
+        highlight.Name = espType .. "ESP"
+        highlight.FillColor = color
+        highlight.OutlineColor = outlineColor
+        highlight.FillTransparency = 0.5
+        highlight.OutlineTransparency = 0
+        highlight.Parent = obj
+        table.insert(espHighlights[espType], highlight)
+        
+        if labelText then
+            local billboard = Instance.new("BillboardGui")
+            billboard.Name = espType .. "ESP"
+            billboard.AlwaysOnTop = true
+            billboard.Size = UDim2.new(0, 100, 0, 50)
+            billboard.StudsOffset = Vector3.new(0, 2, 0)
+            billboard.Parent = obj
+            
+            local textLabel = Instance.new("TextLabel")
+            textLabel.Size = UDim2.new(1, 0, 1, 0)
+            textLabel.BackgroundTransparency = 1
+            textLabel.Text = labelText
+            textLabel.TextColor3 = color
+            textLabel.TextStrokeTransparency = 0
+            textLabel.TextScaled = true
+            textLabel.Font = Enum.Font.GothamBold
+            textLabel.Parent = billboard
+            
+            table.insert(espHighlights[espType], billboard)
+        end
+    end, "Add ESP - " .. espType)
 end
 
 local function createDoorESP()
-    for _, room in pairs(workspace.CurrentRooms:GetChildren()) do
-        pcall(function()
-            local door = room:FindFirstChild("Door")
-            if door and door:IsA("Model") then
-                addESPToObject(door, "Door", Color3.fromRGB(0, 255, 0), Color3.fromRGB(0, 200, 0), nil)
-            end
-        end)
-    end
+    safeCall(function()
+        for _, room in pairs(workspace.CurrentRooms:GetChildren()) do
+            safeCall(function()
+                local door = room:FindFirstChild("Door")
+                if door and door:IsA("Model") then
+                    addESPToObject(door, "Door", Color3.fromRGB(0, 255, 0), Color3.fromRGB(0, 200, 0), nil)
+                end
+            end, "Create Door ESP - Room")
+        end
+    end, "Create Door ESP")
 end
 
 local function createObjectiveESP()
-    for _, room in pairs(workspace.CurrentRooms:GetChildren()) do
-        pcall(function()
-            for _, obj in pairs(room:GetDescendants()) do
-                if obj.Name == "KeyObtain" then
-                    addESPToObject(obj, "Objective", Color3.fromRGB(255, 255, 0), Color3.fromRGB(200, 200, 0), "Key")
-                elseif obj.Name == "FuseObtain" or obj.Name == "FuseHolder" then
-                    addESPToObject(obj, "Objective", Color3.fromRGB(255, 255, 0), Color3.fromRGB(200, 200, 0), "Fuse")
-                elseif obj.Name == "LiveHintBook" then
-                    addESPToObject(obj, "Objective", Color3.fromRGB(255, 255, 0), Color3.fromRGB(200, 200, 0), "Book")
-                elseif obj.Name == "LeverForGate" then
-                    addESPToObject(obj, "Objective", Color3.fromRGB(255, 255, 0), Color3.fromRGB(200, 200, 0), "Lever")
-                elseif obj.Name == "LiveBreakerPolePickup" then
-                    addESPToObject(obj, "Objective", Color3.fromRGB(255, 255, 0), Color3.fromRGB(200, 200, 0), "Breaker")
-                elseif obj.Name == "TimerLever" then
-                    addESPToObject(obj, "Objective", Color3.fromRGB(255, 255, 0), Color3.fromRGB(200, 200, 0), "Timer")
-                elseif obj.Name == "Padlock" then
-                    addESPToObject(obj, "Objective", Color3.fromRGB(255, 255, 0), Color3.fromRGB(200, 200, 0), "Lock")
+    safeCall(function()
+        for _, room in pairs(workspace.CurrentRooms:GetChildren()) do
+            safeCall(function()
+                for _, obj in pairs(room:GetDescendants()) do
+                    if obj.Name == "KeyObtain" then
+                        addESPToObject(obj, "Objective", Color3.fromRGB(255, 255, 0), Color3.fromRGB(200, 200, 0), "Key")
+                    elseif obj.Name == "FuseObtain" or obj.Name == "FuseHolder" then
+                        addESPToObject(obj, "Objective", Color3.fromRGB(255, 255, 0), Color3.fromRGB(200, 200, 0), "Fuse")
+                    elseif obj.Name == "LiveHintBook" then
+                        addESPToObject(obj, "Objective", Color3.fromRGB(255, 255, 0), Color3.fromRGB(200, 200, 0), "Book")
+                    elseif obj.Name == "LeverForGate" then
+                        addESPToObject(obj, "Objective", Color3.fromRGB(255, 255, 0), Color3.fromRGB(200, 200, 0), "Lever")
+                    elseif obj.Name == "LiveBreakerPolePickup" then
+                        addESPToObject(obj, "Objective", Color3.fromRGB(255, 255, 0), Color3.fromRGB(200, 200, 0), "Breaker")
+                    elseif obj.Name == "TimerLever" then
+                        addESPToObject(obj, "Objective", Color3.fromRGB(255, 255, 0), Color3.fromRGB(200, 200, 0), "Timer")
+                    elseif obj.Name == "Padlock" then
+                        addESPToObject(obj, "Objective", Color3.fromRGB(255, 255, 0), Color3.fromRGB(200, 200, 0), "Lock")
+                    end
                 end
-            end
-        end)
-    end
+            end, "Create Objective ESP - Room")
+        end
+    end, "Create Objective ESP")
 end
 
 local function createEntityESP()
-    for _, child in pairs(workspace:GetChildren()) do
-        pcall(function()
-            if child.Name == "RushMoving" and child:IsA("Model") then
-                addESPToObject(child, "Entity", Color3.fromRGB(255, 0, 0), Color3.fromRGB(200, 0, 0), "RUSH")
-            elseif child.Name == "AmbushMoving" and child:IsA("Model") then
-                addESPToObject(child, "Entity", Color3.fromRGB(255, 100, 0), Color3.fromRGB(200, 80, 0), "AMBUSH")
-            elseif child.Name == "Eyes" and child:IsA("Model") then
-                addESPToObject(child, "Entity", Color3.fromRGB(150, 0, 255), Color3.fromRGB(120, 0, 200), "EYES")
-            elseif child.Name == "Halt" and child:IsA("Model") then
-                addESPToObject(child, "Entity", Color3.fromRGB(0, 200, 255), Color3.fromRGB(0, 150, 200), "HALT")
-            elseif child.Name == "Screech" and child:IsA("Model") then
-                addESPToObject(child, "Entity", Color3.fromRGB(255, 255, 255), Color3.fromRGB(200, 200, 200), "SCREECH")
-            elseif child.Name == "A60" or child.Name == "A120" then
-                addESPToObject(child, "Entity", Color3.fromRGB(255, 50, 50), Color3.fromRGB(200, 30, 30), child.Name)
-            end
-        end)
-    end
-    
-    for _, room in pairs(workspace.CurrentRooms:GetChildren()) do
-        pcall(function()
-            local figureSetup = room:FindFirstChild("FigureSetup")
-            if figureSetup then
-                local figureRig = figureSetup:FindFirstChild("FigureRig")
-                if figureRig then
-                    addESPToObject(figureRig, "Entity", Color3.fromRGB(255, 0, 0), Color3.fromRGB(200, 0, 0), "FIGURE")
+    safeCall(function()
+        for _, child in pairs(workspace:GetChildren()) do
+            safeCall(function()
+                if child.Name == "RushMoving" and child:IsA("Model") then
+                    addESPToObject(child, "Entity", Color3.fromRGB(255, 0, 0), Color3.fromRGB(200, 0, 0), "RUSH")
+                elseif child.Name == "AmbushMoving" and child:IsA("Model") then
+                    addESPToObject(child, "Entity", Color3.fromRGB(255, 100, 0), Color3.fromRGB(200, 80, 0), "AMBUSH")
+                elseif child.Name == "Eyes" and child:IsA("Model") then
+                    addESPToObject(child, "Entity", Color3.fromRGB(150, 0, 255), Color3.fromRGB(120, 0, 200), "EYES")
+                elseif child.Name == "Halt" and child:IsA("Model") then
+                    addESPToObject(child, "Entity", Color3.fromRGB(0, 200, 255), Color3.fromRGB(0, 150, 200), "HALT")
+                elseif child.Name == "Screech" and child:IsA("Model") then
+                    addESPToObject(child, "Entity", Color3.fromRGB(255, 255, 255), Color3.fromRGB(200, 200, 200), "SCREECH")
+                elseif child.Name == "A60" or child.Name == "A120" then
+                    addESPToObject(child, "Entity", Color3.fromRGB(255, 50, 50), Color3.fromRGB(200, 30, 30), child.Name)
                 end
-            end
-            
-            local seekSetup = room:FindFirstChild("SeekSetup") or room:FindFirstChild("Seek")
-            if seekSetup then
-                local seekModel = seekSetup:FindFirstChild("SeekRig") or seekSetup:FindFirstChild("Seek") or seekSetup
-                if seekModel and seekModel:IsA("Model") then
-                    addESPToObject(seekModel, "Entity", Color3.fromRGB(0, 0, 0), Color3.fromRGB(100, 100, 100), "SEEK")
-                end
-            end
-            
-            local assets = room:FindFirstChild("Assets")
-            if assets then
-                for _, obj in pairs(assets:GetChildren()) do
-                    if obj.Name == "Snare" then
-                        addESPToObject(obj, "Entity", Color3.fromRGB(255, 100, 100), Color3.fromRGB(200, 80, 80), "SNARE")
+            end, "Create Entity ESP - Workspace Child")
+        end
+        
+        for _, room in pairs(workspace.CurrentRooms:GetChildren()) do
+            safeCall(function()
+                local figureSetup = room:FindFirstChild("FigureSetup")
+                if figureSetup then
+                    local figureRig = figureSetup:FindFirstChild("FigureRig")
+                    if figureRig then
+                        addESPToObject(figureRig, "Entity", Color3.fromRGB(255, 0, 0), Color3.fromRGB(200, 0, 0), "FIGURE")
                     end
                 end
-            end
-        end)
-    end
+                
+                local seekSetup = room:FindFirstChild("SeekSetup") or room:FindFirstChild("Seek")
+                if seekSetup then
+                    local seekModel = seekSetup:FindFirstChild("SeekRig") or seekSetup:FindFirstChild("Seek") or seekSetup
+                    if seekModel and seekModel:IsA("Model") then
+                        addESPToObject(seekModel, "Entity", Color3.fromRGB(0, 0, 0), Color3.fromRGB(100, 100, 100), "SEEK")
+                    end
+                end
+                
+                local assets = room:FindFirstChild("Assets")
+                if assets then
+                    for _, obj in pairs(assets:GetChildren()) do
+                        if obj.Name == "Snare" then
+                            addESPToObject(obj, "Entity", Color3.fromRGB(255, 100, 100), Color3.fromRGB(200, 80, 80), "SNARE")
+                        end
+                    end
+                end
+            end, "Create Entity ESP - Room")
+        end
+    end, "Create Entity ESP")
 end
 
 local function cleanupDestroyedESP()
-    for espType, highlights in pairs(espHighlights) do
-        local validHighlights = {}
-        for _, item in pairs(highlights) do
-            if item and item.Parent then
-                table.insert(validHighlights, item)
+    safeCall(function()
+        for espType, highlights in pairs(espHighlights) do
+            local validHighlights = {}
+            for _, item in pairs(highlights) do
+                if item and item.Parent then
+                    table.insert(validHighlights, item)
+                end
             end
+            espHighlights[espType] = validHighlights
         end
-        espHighlights[espType] = validHighlights
-    end
+    end, "Cleanup Destroyed ESP")
 end
 
 local function startESPUpdateLoop()
@@ -1471,63 +1579,67 @@ local function startESPUpdateLoop()
 end
 
 ESPTab:Dropdown("ESP Types", {"Door", "Objective", "Entity"}, function(selected)
-    if selected["Door"] and not espEnabled.Door then
-        espEnabled.Door = true
-        Settings.espDoor = true
-        createDoorESP()
-        startESPUpdateLoop()
-    elseif not selected["Door"] and espEnabled.Door then
-        espEnabled.Door = false
-        Settings.espDoor = false
-        clearESP("Door")
-    end
-    
-    if selected["Objective"] and not espEnabled.Objective then
-        espEnabled.Objective = true
-        Settings.espObjective = true
-        createObjectiveESP()
-        startESPUpdateLoop()
-    elseif not selected["Objective"] and espEnabled.Objective then
-        espEnabled.Objective = false
-        Settings.espObjective = false
-        clearESP("Objective")
-    end
-    
-    if selected["Entity"] and not espEnabled.Entity then
-        espEnabled.Entity = true
-        Settings.espEntity = true
-        createEntityESP()
-        startESPUpdateLoop()
-    elseif not selected["Entity"] and espEnabled.Entity then
-        espEnabled.Entity = false
-        Settings.espEntity = false
-        clearESP("Entity")
-    end
-    
-    if not espEnabled.Door and not espEnabled.Objective and not espEnabled.Entity then
-        if espUpdateLoop then
-            task.cancel(espUpdateLoop)
-            espUpdateLoop = nil
+    safeCall(function()
+        if selected["Door"] and not espEnabled.Door then
+            espEnabled.Door = true
+            Settings.espDoor = true
+            createDoorESP()
+            startESPUpdateLoop()
+        elseif not selected["Door"] and espEnabled.Door then
+            espEnabled.Door = false
+            Settings.espDoor = false
+            clearESP("Door")
         end
-    end
+        
+        if selected["Objective"] and not espEnabled.Objective then
+            espEnabled.Objective = true
+            Settings.espObjective = true
+            createObjectiveESP()
+            startESPUpdateLoop()
+        elseif not selected["Objective"] and espEnabled.Objective then
+            espEnabled.Objective = false
+            Settings.espObjective = false
+            clearESP("Objective")
+        end
+        
+        if selected["Entity"] and not espEnabled.Entity then
+            espEnabled.Entity = true
+            Settings.espEntity = true
+            createEntityESP()
+            startESPUpdateLoop()
+        elseif not selected["Entity"] and espEnabled.Entity then
+            espEnabled.Entity = false
+            Settings.espEntity = false
+            clearESP("Entity")
+        end
+        
+        if not espEnabled.Door and not espEnabled.Objective and not espEnabled.Entity then
+            if espUpdateLoop then
+                task.cancel(espUpdateLoop)
+                espUpdateLoop = nil
+            end
+        end
+    end, "ESP Dropdown")
 end, "Select ESP types")
 
 local entityNotifierEnabled = false
 local notifiedEntities = {}
 
 ESPTab:Toggle("Entity Notifier", Settings.entityNotifier, function(enabled)
-    entityNotifierEnabled = enabled
-    Settings.entityNotifier = enabled
-    if not enabled then
-        notifiedEntities = {}
-    end
+    safeCall(function()
+        entityNotifierEnabled = enabled
+        Settings.entityNotifier = enabled
+        if not enabled then
+            notifiedEntities = {}
+        end
+    end, "Entity Notifier Toggle")
 end, "Get notifications when entities spawn")
 
 task.spawn(function()
     while true do
         task.wait(0.5)
         if entityNotifierEnabled then
-            pcall(function()
+            safeCall(function()
                 local rushMoving = workspace:FindFirstChild("RushMoving")
                 if rushMoving and not notifiedEntities["RushMoving"] then
                     notifiedEntities["RushMoving"] = true
@@ -1575,179 +1687,193 @@ task.spawn(function()
                 elseif not halt and notifiedEntities["Halt"] then
                     notifiedEntities["Halt"] = nil
                 end
-            end)
+            end, "Entity Notifier Loop")
         end
     end
 end)
 
-loadstring(game:HttpGet("https://raw.githubusercontent.com/ZeScript/ZeScripts/refs/heads/main/Tracker"))() 
+loadstring(game:HttpGet("https://raw.githubusercontent.com/ZeScript/ZeScripts/refs/heads/main/Tracker"))()
 
 local fullbrightEnabled = false
 local originalLighting = {}
 local lightingConnection
 
 DisplayTab:Toggle("Fullbright", Settings.fullbright, function(enabled)
-    fullbrightEnabled = enabled
-    Settings.fullbright = enabled
-    
-    if enabled then
-        local Lighting = game:GetService("Lighting")
-        originalLighting = {
-            Brightness = Lighting.Brightness,
-            ClockTime = Lighting.ClockTime,
-            FogEnd = Lighting.FogEnd,
-            GlobalShadows = Lighting.GlobalShadows,
-            Ambient = Lighting.Ambient
-        }
+    safeCall(function()
+        fullbrightEnabled = enabled
+        Settings.fullbright = enabled
         
-        Lighting.Brightness = 2
-        Lighting.ClockTime = 14
-        Lighting.FogEnd = 100000
-        Lighting.GlobalShadows = false
-        Lighting.Ambient = Color3.fromRGB(178, 178, 178)
-        
-        lightingConnection = Lighting.Changed:Connect(function(property)
-            if fullbrightEnabled then
-                if property == "Brightness" and Lighting.Brightness ~= 2 then
-                    Lighting.Brightness = 2
-                elseif property == "ClockTime" and Lighting.ClockTime ~= 14 then
-                    Lighting.ClockTime = 14
-                elseif property == "FogEnd" and Lighting.FogEnd ~= 100000 then
-                    Lighting.FogEnd = 100000
-                elseif property == "GlobalShadows" and Lighting.GlobalShadows ~= false then
-                    Lighting.GlobalShadows = false
-                elseif property == "Ambient" and Lighting.Ambient ~= Color3.fromRGB(178, 178, 178) then
-                    Lighting.Ambient = Color3.fromRGB(178, 178, 178)
+        if enabled then
+            local Lighting = game:GetService("Lighting")
+            originalLighting = {
+                Brightness = Lighting.Brightness,
+                ClockTime = Lighting.ClockTime,
+                FogEnd = Lighting.FogEnd,
+                GlobalShadows = Lighting.GlobalShadows,
+                Ambient = Lighting.Ambient
+            }
+            
+            Lighting.Brightness = 2
+            Lighting.ClockTime = 14
+            Lighting.FogEnd = 100000
+            Lighting.GlobalShadows = false
+            Lighting.Ambient = Color3.fromRGB(178, 178, 178)
+            
+            lightingConnection = Lighting.Changed:Connect(function(property)
+                if fullbrightEnabled then
+                    safeCall(function()
+                        if property == "Brightness" and Lighting.Brightness ~= 2 then
+                            Lighting.Brightness = 2
+                        elseif property == "ClockTime" and Lighting.ClockTime ~= 14 then
+                            Lighting.ClockTime = 14
+                        elseif property == "FogEnd" and Lighting.FogEnd ~= 100000 then
+                            Lighting.FogEnd = 100000
+                        elseif property == "GlobalShadows" and Lighting.GlobalShadows ~= false then
+                            Lighting.GlobalShadows = false
+                        elseif property == "Ambient" and Lighting.Ambient ~= Color3.fromRGB(178, 178, 178) then
+                            Lighting.Ambient = Color3.fromRGB(178, 178, 178)
+                        end
+                    end, "Fullbright Changed Event")
                 end
+            end)
+        else
+            if lightingConnection then
+                lightingConnection:Disconnect()
+                lightingConnection = nil
             end
-        end)
-    else
-        if lightingConnection then
-            lightingConnection:Disconnect()
-            lightingConnection = nil
+            
+            local Lighting = game:GetService("Lighting")
+            for property, value in pairs(originalLighting) do
+                Lighting[property] = value
+            end
         end
-        
-        local Lighting = game:GetService("Lighting")
-        for property, value in pairs(originalLighting) do
-            Lighting[property] = value
-        end
-    end
+    end, "Fullbright Toggle")
 end, "See clearly in dark areas")
 
 local desiredFOV = Settings.fov
 local fovConnection
 
 fovConnection = RunService.RenderStepped:Connect(function()
-    pcall(function()
+    safeCall(function()
         local camera = workspace.CurrentCamera
         if camera and camera.FieldOfView ~= desiredFOV then
             camera.FieldOfView = desiredFOV
         end
-    end)
+    end, "FOV RenderStepped")
 end)
 
 DisplayTab:Slider("FOV", 70, 120, Settings.fov, function(value)
-    desiredFOV = value
-    Settings.fov = value
+    safeCall(function()
+        desiredFOV = value
+        Settings.fov = value
+    end, "FOV Slider")
 end, "Adjust field of view")
 
 
 SettingsCategory:ThemePicker("UI Theme", function(themeName, themeData)
-    Settings.theme = themeName
-    Window:Notify({
-        Text = "Theme changed to " .. themeName,
-        Duration = 2,
-        Type = "Success"
-    })
+    safeCall(function()
+        Settings.theme = themeName
+        Window:Notify({
+            Text = "Theme changed to " .. themeName,
+            Duration = 2,
+            Type = "Success"
+        })
+    end, "Theme Picker")
 end, "Choose color theme")
 
 SettingsCategory:Keybind("Toggle UI Key", Enum.KeyCode.RightShift, function(key, pressed)
 end, "Key to open/close UI")
 
 SettingsCategory:Toggle("Auto Load Settings", Settings.autoLoad, function(enabled)
-    Settings.autoLoad = enabled
-    saveSettings()
+    safeCall(function()
+        Settings.autoLoad = enabled
+        saveSettings()
+    end, "Auto Load Settings Toggle")
 end, "Automatically load settings on script start")
 
 SettingsCategory:Button("Save Settings", function()
-    if saveSettings() then
-        Window:Notify({
-            Text = "Settings saved!",
-            Duration = 2,
-            Type = "Success"
-        })
-    else
-        Window:Notify({
-            Text = "Failed to save settings",
-            Duration = 2,
-            Type = "Error"
-        })
-    end
+    safeCall(function()
+        if saveSettings() then
+            Window:Notify({
+                Text = "Settings saved!",
+                Duration = 2,
+                Type = "Success"
+            })
+        else
+            Window:Notify({
+                Text = "Failed to save settings",
+                Duration = 2,
+                Type = "Error"
+            })
+        end
+    end, "Save Settings Button")
 end, "Save current settings to file")
 
 SettingsCategory:Button("Load Settings", function()
-    if loadSettings() then
-        Window:Notify({
-            Text = "Settings loaded!",
-            Duration = 3,
-            Type = "Success"
-        })
-    else
-        Window:Notify({
-            Text = "No saved settings found",
-            Duration = 2,
-            Type = "Warning"
-        })
-    end
+    safeCall(function()
+        if loadSettings() then
+            Window:Notify({
+                Text = "Settings loaded!",
+                Duration = 3,
+                Type = "Success"
+            })
+        else
+            Window:Notify({
+                Text = "No saved settings found",
+                Duration = 2,
+                Type = "Warning"
+            })
+        end
+    end, "Load Settings Button")
 end, "Load settings from file")
 
 local function destroyScript()
-    if lightingConnection then
-        lightingConnection:Disconnect()
-    end
-    if fovConnection then
-        fovConnection:Disconnect()
-    end
-    
-    if spoofCrouchLoop then
-        task.cancel(spoofCrouchLoop)
-    end
-    if antiEyesLoop then
-        task.cancel(antiEyesLoop)
-    end
-    if antiSpeedLoop then
-        task.cancel(antiSpeedLoop)
-    end
-    if bypassLoop then
-        task.cancel(bypassLoop)
-    end
-    if speedLoop then
-        task.cancel(speedLoop)
-    end
-    if noAccelLoop then
-        task.cancel(noAccelLoop)
-    end
-    if autoProxiLoop then
-        task.cancel(autoProxiLoop)
-    end
-    if doorReachLoop then
-        task.cancel(doorReachLoop)
-    end
-    if espUpdateLoop then
-        task.cancel(espUpdateLoop)
-    end
-    if godModeConnection then
-        godModeConnection:Disconnect()
-    end
-    if godModeDistanceLoop then
-        task.cancel(godModeDistanceLoop)
-    end
-    
-    clearESP("Door")
-    clearESP("Objective")
-    clearESP("Entity")
-    
-    pcall(function()
+    safeCall(function()
+        if lightingConnection then
+            lightingConnection:Disconnect()
+        end
+        if fovConnection then
+            fovConnection:Disconnect()
+        end
+        
+        if spoofCrouchLoop then
+            task.cancel(spoofCrouchLoop)
+        end
+        if antiEyesLoop then
+            task.cancel(antiEyesLoop)
+        end
+        if antiSpeedLoop then
+            task.cancel(antiSpeedLoop)
+        end
+        if bypassLoop then
+            task.cancel(bypassLoop)
+        end
+        if speedLoop then
+            task.cancel(speedLoop)
+        end
+        if noAccelLoop then
+            task.cancel(noAccelLoop)
+        end
+        if autoProxiLoop then
+            task.cancel(autoProxiLoop)
+        end
+        if doorReachLoop then
+            task.cancel(doorReachLoop)
+        end
+        if espUpdateLoop then
+            task.cancel(espUpdateLoop)
+        end
+        if godModeConnection then
+            godModeConnection:Disconnect()
+        end
+        if godModeDistanceLoop then
+            task.cancel(godModeDistanceLoop)
+        end
+        
+        clearESP("Door")
+        clearESP("Objective")
+        clearESP("Entity")
+        
         local LocalPlayer = Players.LocalPlayer
         local Character = LocalPlayer and LocalPlayer.Character
         
@@ -1776,37 +1902,35 @@ local function destroyScript()
                 end
             end
         end
-    end)
-    
-    if fullbrightEnabled then
-        local Lighting = game:GetService("Lighting")
-        for property, value in pairs(originalLighting) do
-            Lighting[property] = value
+        
+        if fullbrightEnabled then
+            local Lighting = game:GetService("Lighting")
+            for property, value in pairs(originalLighting) do
+                Lighting[property] = value
+            end
         end
-    end
-    
-    if screechDisabled and screechOriginalParent then
-        pcall(function()
+        
+        if screechDisabled and screechOriginalParent then
             local ReplicatedStorage = game:GetService("ReplicatedStorage")
             local screech = ReplicatedStorage.Entities:FindFirstChild("Screech")
             if screech then
                 screech.Parent = screechOriginalParent
             end
-        end)
-    end
-    
-    getgenv().ZeScriptLoaded = false
-    
-    Window:Notify({
-        Text = "Script destroyed!",
-        Duration = 3,
-        Type = "Warning"
-    })
-    
-    task.wait(0.5)
-    if Window.Destroy then
-        Window:Destroy()
-    end
+        end
+        
+        getgenv().ZeScriptLoaded = false
+        
+        Window:Notify({
+            Text = "Script destroyed!",
+            Duration = 3,
+            Type = "Warning"
+        })
+        
+        task.wait(0.5)
+        if Window.Destroy then
+            Window:Destroy()
+        end
+    end, "Destroy Script")
 end
 
 
@@ -1815,46 +1939,50 @@ SettingsCategory:Button("Destroy Script", function()
 end, "Remove script and restore settings")
 
 SettingsCategory:Button("Reset All Settings", function()
-    Settings = {
-        spoofCrouch = false,
-        antiEyes = false,
-        disableScreech = false,
-        disableSnare = false,
-        objectBypass = false,
-        noAccel = false,
-        autoProxi = false,
-        autoProxiInstant = true,
-        autoProxiKey = "R",
-        proximityReach = 0,
-        doorReach = false,
-        doorReachDistance = 25,
-        antiSpeedBypass = false,
-        speed = false,
-        speedValue = 16,
-        minesAnticheat = false,
-        espDoor = false,
-        espObjective = false,
-        espEntity = false,
-        entityNotifier = false,
-        fullbright = false,
-        fov = 70,
-        theme = "Purple",
-        autoLoad = false,
-        godMode = false
-    }
-    
-    Window:Notify({
-        Text = "Settings reset!",
-        Duration = 2,
-        Type = "Success"
-    })
+    safeCall(function()
+        Settings = {
+            spoofCrouch = false,
+            antiEyes = false,
+            disableScreech = false,
+            disableSnare = false,
+            objectBypass = false,
+            noAccel = false,
+            autoProxi = false,
+            autoProxiInstant = true,
+            autoProxiKey = "R",
+            proximityReach = 0,
+            doorReach = false,
+            doorReachDistance = 25,
+            antiSpeedBypass = false,
+            speed = false,
+            speedValue = 16,
+            minesAnticheat = false,
+            espDoor = false,
+            espObjective = false,
+            espEntity = false,
+            entityNotifier = false,
+            fullbright = false,
+            fov = 70,
+            theme = "Purple",
+            autoLoad = false,
+            godMode = false
+        }
+        
+        Window:Notify({
+            Text = "Settings reset!",
+            Duration = 2,
+            Type = "Success"
+        })
+    end, "Reset All Settings Button")
 end, "Reset all settings to default")
 
 SettingsCategory:Button("Hide UI", function()
-    Window:Hide()
+    safeCall(function()
+        Window:Hide()
+    end, "Hide UI Button")
 end, "Hide UI - press toggle key to show")
 
-SettingsCategory:Label("ZeScript Doors v1.4")
+SettingsCategory:Label("ZeScript Doors v1.4 (Notifications)")
 SettingsCategory:Label("Floor: " .. currentFloor)
 
 if Settings.autoLoad then
