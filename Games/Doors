@@ -599,7 +599,6 @@ local Camera = workspace.CurrentCamera
 local figureGodModeEnabled = false
 local figureGodModeLoop = nil
 local isFigureGodModeActive = false
-local originalFigureProps = {}
 
 local fakeCameraConnection = nil
 local originalCameraType = Camera.CameraType
@@ -619,18 +618,14 @@ end
 
 local function enableFakeCamera(character)
     if fakeCameraConnection then return end
-
     local head = character:FindFirstChild("Head")
     if not head then return end
-
     originalCameraType = Camera.CameraType
     originalCameraSubject = Camera.CameraSubject
-
     Camera.CameraType = Enum.CameraType.Scriptable
-
     fakeCameraConnection = RunService.RenderStepped:Connect(function()
         if not head or not head.Parent then return end
-        Camera.CFrame = head.CFrame * CFrame.new(0, -13, 0)
+        Camera.CFrame = head.CFrame * CFrame.new(0, -10, 0)
     end)
 end
 
@@ -639,31 +634,28 @@ local function disableFakeCamera()
         fakeCameraConnection:Disconnect()
         fakeCameraConnection = nil
     end
-
     Camera.CameraType = originalCameraType
-
     if originalCameraSubject then
         Camera.CameraSubject = originalCameraSubject
     end
 end
 
+local function invertedGodModeDown(character)
+    local hrp = character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    hrp.CFrame = hrp.CFrame - Vector3.new(0, 13, 0) -- undo the 13 stud lift
+end
+
 local function enableFigureGodMode(character)
     safeCall(function()
         if isFigureGodModeActive then return end
-
         local humanoid = character:FindFirstChild("Humanoid")
         local hrp = character:FindFirstChild("HumanoidRootPart")
         if not (humanoid and hrp) then return end
-
-        originalFigureProps.HipHeight = humanoid.HipHeight
-
         hrp.CFrame = hrp.CFrame + Vector3.new(0, 13, 0)
-        humanoid.HipHeight = 15
-
+        humanoid.HipHeight = 13
         enableFakeCamera(character)
-
         isFigureGodModeActive = true
-
         Window:Notify({
             Text = "Figure GodMode Activated",
             Duration = 2,
@@ -674,17 +666,13 @@ end
 
 local function disableFigureGodMode(character)
     safeCall(function()
-        if not isFigureGodModeActive then return end
-
         local humanoid = character:FindFirstChild("Humanoid")
-        if humanoid and originalFigureProps.HipHeight then
-            humanoid.HipHeight = originalFigureProps.HipHeight
+        if humanoid then
+            humanoid.HipHeight = 2
         end
-
         disableFakeCamera()
-
+        invertedGodModeDown(character)
         isFigureGodModeActive = false
-
         Window:Notify({
             Text = "Figure GodMode Deactivated",
             Duration = 2,
@@ -695,30 +683,25 @@ end
 
 local function checkFigureDistance()
     if not figureGodModeEnabled then return end
-
     safeCall(function()
         local character = LocalPlayer.Character
         if not character then return end
-
         local hrp = character:FindFirstChild("HumanoidRootPart")
         if not hrp then return end
-
         local figureNearby = false
-
         for _, room in pairs(workspace.CurrentRooms:GetChildren()) do
             local setup = room:FindFirstChild("FigureSetup")
             if setup then
                 local rig = setup:FindFirstChild("FigureRig")
                 if rig then
                     local pos = getFigurePosition(rig)
-                    if pos and (hrp.Position - pos).Magnitude <= 25 then
+                    if pos and (hrp.Position - pos).Magnitude <= 28 then
                         figureNearby = true
                         break
                     end
                 end
             end
         end
-
         if figureNearby and not isFigureGodModeActive then
             enableFigureGodMode(character)
         elseif not figureNearby and isFigureGodModeActive then
@@ -730,7 +713,6 @@ end
 UniversalTab:Toggle("Figure GodMode", false, function(enabled)
     safeCall(function()
         figureGodModeEnabled = enabled
-
         if enabled then
             figureGodModeLoop = task.spawn(function()
                 while figureGodModeEnabled do
@@ -743,7 +725,6 @@ UniversalTab:Toggle("Figure GodMode", false, function(enabled)
                 task.cancel(figureGodModeLoop)
                 figureGodModeLoop = nil
             end
-
             if isFigureGodModeActive then
                 local character = LocalPlayer.Character
                 if character then
@@ -757,7 +738,6 @@ end)
 LocalPlayer.CharacterAdded:Connect(function()
     safeCall(function()
         isFigureGodModeActive = false
-        originalFigureProps = {}
         disableFakeCamera()
     end)
 end)
@@ -2135,7 +2115,7 @@ task.spawn(function()
     end
 end)
 
---loadstring(game:HttpGet("https://raw.githubusercontent.com/ZeScript/ZeScripts/refs/heads/main/Tracker"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/ZeScript/ZeScripts/refs/heads/main/Tracker"))()
 
 local fullbrightEnabled = false
 local originalLighting = {}
@@ -2439,5 +2419,5 @@ if Settings.autoLoad then
     end
 end
 
-wait(0.2)
+wait(0.01)
 Window:Show()
