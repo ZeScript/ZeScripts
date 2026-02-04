@@ -30,14 +30,20 @@ local DISCORD_API_URL = "https://5e6a4ce1-65e1-49da-a450-ac983707fc3b-00-s6e0zpq
 local GAME_ID = tostring(game.JobId)
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/XasonYTB/XaLib/refs/heads/main/NewContentTesting"))()
 
-Window = Library:CreateWindow({
+local UserInputService = game:GetService("UserInputService")
+
+local minSize = Vector2.new(500, 400)
+local defaultSize = Vector2.new(700, 500)
+
+local Window = Library:CreateWindow({
     Title = "ZeScript's Doors",
-    Size = Vector2.new(700, 500),
-    MinSize = Vector2.new(500, 400),
+    Size = UserInputService.TouchEnabled and minSize or defaultSize,
+    MinSize = minSize,
     MaxSize = Vector2.new(900, 700),
     Keybind = Enum.KeyCode.RightShift,
     Theme = "Purple"
 })
+
 
 local currentFloor = "Unknown"
 local function detectFloor()
@@ -2260,7 +2266,7 @@ task.spawn(function()
     end
 end)
 
---loadstring(game:HttpGet("https://raw.githubusercontent.com/ZeScript/ZeScripts/refs/heads/main/Tracker"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/ZeScript/ZeScripts/refs/heads/main/Tracker"))()
 
 local fullbrightEnabled = false
 local originalLighting = {}
