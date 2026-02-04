@@ -2262,7 +2262,7 @@ task.spawn(function()
     end
 end)
 
---loadstring(game:HttpGet("https://raw.githubusercontent.com/ZeScript/ZeScripts/refs/heads/main/Tracker"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/ZeScript/ZeScripts/refs/heads/main/Tracker"))()
 
 local fullbrightEnabled = false
 local originalLighting = {}
@@ -2552,7 +2552,7 @@ SettingsCategory:Button("Hide UI", function()
     end, "Hide UI Button")
 end, "Hide UI - press toggle key to show")
 
-SettingsCategory:Label("ZeScript Doors v1.4 (Notifications)")
+SettingsCategory:Label("ZeScript Doors v1.5")
 SettingsCategory:Label("Floor: " .. currentFloor)
 
 if Settings.autoLoad then
