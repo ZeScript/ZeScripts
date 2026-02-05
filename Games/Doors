@@ -1357,6 +1357,65 @@ local entityPathingToggle = UniversalTab:Toggle("Entity Pathing", false, functio
     end, "Entity Pathing Toggle")
 end, "Shows entity path")
 
+local autoFinishDailyEnabled = false
+local autoFinishDailyLoop = nil
+
+local autoFinishDailyToggle = UniversalTab:Toggle("Auto Finish Daily Run", false, function(enabled)
+    safeCall(function()
+        autoFinishDailyEnabled = enabled
+        
+        if enabled then
+            Window:Notify({
+                Text = "[Finish Daily Run]: To finish the daily run go through some rooms it'll automatically finish everything else after some time",
+                Duration = 8,
+                Type = "Warning"
+            })
+            
+            autoFinishDailyLoop = task.spawn(function()
+                while autoFinishDailyEnabled do
+                    task.wait(1) -- Check every second
+                    safeCall(function()
+                        local LocalPlayer = Players.LocalPlayer
+                        local Character = LocalPlayer and LocalPlayer.Character
+                        if not Character then return end
+                        
+                        local hrp = Character:FindFirstChild("HumanoidRootPart")
+                        if not hrp then return end
+                        
+                        local currentRooms = workspace:FindFirstChild("CurrentRooms")
+                        if not currentRooms then return end
+                        
+                        -- Search through all rooms for RippleExitDoor
+                        for _, room in pairs(currentRooms:GetChildren()) do
+                            local rippleExitDoor = room:FindFirstChild("RippleExitDoor", true)
+                            if rippleExitDoor then
+                                -- Found the exit door, teleport to it
+                                local doorPart = rippleExitDoor:IsA("BasePart") and rippleExitDoor or rippleExitDoor:FindFirstChildWhichIsA("BasePart", true)
+                                if doorPart then
+                                    hrp.CFrame = doorPart.CFrame + Vector3.new(0, 3, 0)
+                                    Window:Notify({
+                                        Text = "Teleported to Daily Run Exit!",
+                                        Duration = 3,
+                                        Type = "Success"
+                                    })
+                                    -- Optional: disable the feature after teleporting
+                                    -- autoFinishDailyEnabled = false
+                                    -- break
+                                end
+                            end
+                        end
+                    end, "Auto Finish Daily Run Loop")
+                end
+            end)
+        else
+            if autoFinishDailyLoop then
+                task.cancel(autoFinishDailyLoop)
+                autoFinishDailyLoop = nil
+            end
+        end
+    end, "Auto Finish Daily Run Toggle")
+end, "Automatically finds and teleports to the daily run exit")
+
 local noAccelEnabled = false
 local noAccelLoop = nil
 local originalHrpProps = nil
