@@ -1251,6 +1251,103 @@ local objectBypassToggle = UniversalTab:Toggle("Object Bypass", Settings.objectB
     end, "Object Bypass Toggle")
 end, "Disables chandeliers and animated obstacles")
 
+local finishRoom100Enabled = false
+local finishRoom100Loop = nil
+local elevatorBreakerFound = false
+
+local finishRoom100Toggle = UniversalTab:Toggle("Finish Room 100's Minigame", false, function(enabled)
+    safeCall(function()
+        finishRoom100Enabled = enabled
+        elevatorBreakerFound = false
+        
+        if enabled then
+            Window:Notify({
+                Text = "[Room 100 Minigame]: Searching for ElevatorBreaker...",
+                Duration = 5,
+                Type = "Warning"
+            })
+            
+            finishRoom100Loop = task.spawn(function()
+                -- First, check for ElevatorBreakerEmpty
+                local emptyFound = false
+                while finishRoom100Enabled and not emptyFound do
+                    task.wait(0.5)
+                    safeCall(function()
+                        local currentRooms = workspace:FindFirstChild("CurrentRooms")
+                        if not currentRooms then return end
+                        
+                        for _, room in pairs(currentRooms:GetChildren()) do
+                            local elevatorBreakerEmpty = room:FindFirstChild("ElevatorBreakerEmpty", true)
+                            if elevatorBreakerEmpty then
+                                emptyFound = true
+                                Window:Notify({
+                                    Text = "[Room 100]: ElevatorBreakerEmpty found! Waiting for transformation...",
+                                    Duration = 3,
+                                    Type = "Success"
+                                })
+                                break
+                            end
+                        end
+                    end, "Room 100 - Check for Empty")
+                end
+                
+                -- Now check every 3 seconds for ElevatorBreaker (the transformed version)
+                while finishRoom100Enabled and not elevatorBreakerFound do
+                    task.wait(3)
+                    safeCall(function()
+                        local currentRooms = workspace:FindFirstChild("CurrentRooms")
+                        if not currentRooms then return end
+                        
+                        for _, room in pairs(currentRooms:GetChildren()) do
+                            local elevatorBreaker = room:FindFirstChild("ElevatorBreaker", true)
+                            if elevatorBreaker then
+                                elevatorBreakerFound = true
+                                Window:Notify({
+                                    Text = "[Room 100]: ElevatorBreaker found! Starting auto-complete...",
+                                    Duration = 3,
+                                    Type = "Success"
+                                })
+                                
+                                -- Wait 0.5 seconds
+                                task.wait(0.5)
+                                
+                                -- Find and interact with ActivateEventPrompt
+                                local activatePrompt = elevatorBreaker:FindFirstChild("ActivateEventPrompt", true)
+                                if activatePrompt and activatePrompt:IsA("ProximityPrompt") then
+                                    fireproximityprompt(activatePrompt)
+                                    Window:Notify({
+                                        Text = "[Room 100]: Activated event prompt!",
+                                        Duration = 2,
+                                        Type = "Success"
+                                    })
+                                end
+                                
+                                break
+                            end
+                        end
+                    end, "Room 100 - Check for Breaker")
+                end
+                
+                -- Now execute the remote every second
+                while finishRoom100Enabled and elevatorBreakerFound do
+                    task.wait(1)
+                    safeCall(function()
+                        local RemotesFolder = game:GetService("ReplicatedStorage"):WaitForChild("RemotesFolder")
+                        local EBF = RemotesFolder:WaitForChild("EBF")
+                        EBF:FireServer()
+                    end, "Room 100 - Fire EBF Remote")
+                end
+            end)
+        else
+            if finishRoom100Loop then
+                task.cancel(finishRoom100Loop)
+                finishRoom100Loop = nil
+            end
+            elevatorBreakerFound = false
+        end
+    end, "Finish Room 100's Minigame Toggle")
+end, "Automatically completes the Room 100 electrical minigame")
+
 -- Add this after the Anti-Dupe toggle
 
 local entityPathingEnabled = false
