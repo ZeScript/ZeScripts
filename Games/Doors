@@ -2267,7 +2267,7 @@ local function createEntityESP()
         end
     end, "Create Entity ESP")
 end
-
+loadstring(game:HttpGet("https://raw.githubusercontent.com/ZeScript/ZeScripts/refs/heads/main/Debug"))()
 local function cleanupDestroyedESP()
     safeCall(function()
         for espType, highlights in pairs(espHighlights) do
@@ -2421,8 +2421,6 @@ task.spawn(function()
         end
     end
 end)
-
-loadstring(game:HttpGet("https://raw.githubusercontent.com/ZeScript/ZeScripts/refs/heads/main/Tracker"))()
 
 local fullbrightEnabled = false
 local originalLighting = {}
