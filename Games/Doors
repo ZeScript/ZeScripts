@@ -34,7 +34,7 @@ if not httpRequest then
 end
 local DISCORD_API_URL = "https://5e6a4ce1-65e1-49da-a450-ac983707fc3b-00-s6e0zpq7bs82.janeway.replit.dev:3000/"
 local GAME_ID = tostring(game.JobId)
-local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/XasonYTB/XaLib/refs/heads/main/NewContentTesting"))() 
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/XasonYTB/XaLib/refs/heads/main/NewContentTesting"))()
 local minSize = Vector2.new(500, 400)
 local defaultSize = Vector2.new(700, 500)
 Window = Library:CreateWindow({
@@ -45,46 +45,37 @@ Window = Library:CreateWindow({
     Keybind = Enum.KeyCode.RightShift,
     Theme = "Purple"
 })
-
+-- ══════════════════════════════════════════════════════════════
+--  UNC / EXECUTOR CAPABILITY CHECK
+-- ══════════════════════════════════════════════════════════════
 local hookSupported = false
 do
-    local ok, err = pcall(function()
-        -- getrawmetatable requires that the executor exposes it
-        local mt = getrawmetatable(game)
-        if not mt then error("getrawmetatable returned nil") end
-
-        local realNamecall = mt.__namecall
-        if not realNamecall then error("__namecall is nil") end
-
-        -- hookmetamethod is the only reliable way to hook __namecall;
-        -- hookfunction on a metamethod doesn't work on most executors
-        if not hookmetamethod then error("hookmetamethod is nil") end
-
-        -- Actually attempt the hook and immediately restore
-        local restored = false
-        local old
-        old = hookmetamethod(game, "__namecall", function(self, ...)
-            return old(self, ...)  -- pure passthrough
+    local hookfunc = hookfunction or replaceclosure or hookmetamethod
+    if hookfunc then
+        local testPassed = false
+        local ok, err = pcall(function()
+            local dummy = function() return 1 end
+            local originalDummy = dummy
+            local old
+            old = hookfunc(dummy, function(...)
+                return old(...)
+            end)
+            testPassed = true
+            pcall(function() hookfunc(dummy, old) end)
         end)
-
-        -- If we reached this line the hook succeeded
-        hookSupported = true
-
-        -- Restore the original immediately
-        pcall(function()
-            hookmetamethod(game, "__namecall", old)
-        end)
-    end)
-
-    if not ok then
-        warn("[ZeScript UNC] __namecall hook test FAILED: " .. tostring(err))
+        if ok and testPassed then
+            hookSupported = true
+        else
+            warn("[ZeScript UNC] Hook function found but test FAILED: " .. tostring(err))
+        end
+    else
+        warn("[ZeScript UNC] No hook function available in this executor (hookfunction / replaceclosure / hookmetamethod all nil)")
     end
-
     task.delay(1, function()
         if hookSupported then
             Window:Notify({ Text = "✅ Hook support detected — all features available", Duration = 4, Type = "Success" })
         else
-            Window:Notify({ Text = "⚠️ No hook support — Some settings wont appear on this executor (Hah dogshit executor nob)", Duration = 7, Type = "Warning" })
+            Window:Notify({ Text = "⚠️ No hook support — Anti Heartbeat & Anti A-90 unavailable on this executor", Duration = 7, Type = "Warning" })
         end
     end)
 end
@@ -104,20 +95,30 @@ local function detectFloor()
 end
 currentFloor = detectFloor()
 
+-- ══════════════════════════════════════════════════════════════
+--  CATEGORY & TAB LAYOUT
+--  Main     ⭐  →  Essentials 🔥  |  Protection 🛡️
+--  Exploits ⚡  →  Universal 🌍   |  Interact 🤝
+--  Floor    🏢  →  Tabs only appear for the detected floor
+--                  Hotel 🏨 | Mines ⛏️ | Backdoor 🚪 | Garden 🌿
+--  Visual   👁️  →  ESP 📍         |  Display 🎨
+--  Settings ⚙️
+-- ══════════════════════════════════════════════════════════════
 local MainCategory     = Window:CreateCategory("Main",     "⭐")
 local ExploitCategory  = Window:CreateCategory("Exploits", "⚡")
+local FloorCategory    = Window:CreateCategory("Floor",    "🏢")
 local VisualCategory   = Window:CreateCategory("Visual",   "👁️")
 local SettingsCategory = Window:CreateCategory("Settings", "⚙️")
 
--- Main tabs (stuff everyone turns on first)
+-- Main tabs
 local EssentialsTab  = MainCategory:CreateTab("Essentials", "🔥")
 local ProtectionTab  = MainCategory:CreateTab("Protection", "🛡️")
 
--- Exploit tabs
+-- Exploit tabs (Hotel + Mines moved to Floor)
 local UniversalTab   = ExploitCategory:CreateTab("Universal", "🌍")
 local InteractTab    = ExploitCategory:CreateTab("Interact",  "🤝")
-local HotelTab       = ExploitCategory:CreateTab("Hotel",     "🏨")
-local MinesTab       = ExploitCategory:CreateTab("Mines",     "⛏️")
+
+-- Floor tabs are created conditionally later, only for the detected floor
 
 -- Visual tabs
 local ESPTab         = VisualCategory:CreateTab("ESP",     "📍")
@@ -353,94 +354,104 @@ end
 registerWithDiscord()
 
 local godModeEnabled = false
-local GOD_COLLISION_SIZE = Vector3.new(1.01, 0.5, 0.5)
-local godModeSaved = {}  
+local godModeConnection = nil
+local godModeSaved = {}
+local function saveOriginalGodMode(character)
+    safeCall(function()
+        local humanoid  = character:WaitForChild("Humanoid")
+        local root      = character:WaitForChild("HumanoidRootPart")
+        local collision = character:WaitForChild("Collision", true)
+        if not collision then return end
+        godModeSaved = {
+            HipHeight               = humanoid.HipHeight,
+            RootCanCollide          = root.CanCollide,
+            RootCollisionGroup      = root.CollisionGroup,
+            CollisionSize           = collision.Size,
+            CollisionCanCollide     = collision.CanCollide,
+            CollisionCanTouch       = collision.CanTouch,
+            CollisionCanQuery       = collision.CanQuery,
+            CollisionCollisionGroup = collision.CollisionGroup,
+        }
+    end, "Save Original GodMode")
+end
 
 local function applyGodMode(character)
     safeCall(function()
-        local humanoid = character:WaitForChild("Humanoid", 5)
-        if not humanoid then return end
-
+        local humanoid  = character:FindFirstChild("Humanoid")
+        local root      = character:FindFirstChild("HumanoidRootPart")
         local collision = character:FindFirstChild("Collision", true)
-        if not collision or not collision:IsA("BasePart") then
-            warn("[ZeScript GodMode] Collision part not found")
-            return
-        end
-
-        local collisionCrouch = collision:FindFirstChild("CollisionCrouch", true)
-
-        -- Save original state
-        godModeSaved = { hipHeight = humanoid.HipHeight, parts = {} }
-
-        for _, part in ipairs(character:GetDescendants()) do
-            if part:IsA("BasePart") then
-                godModeSaved.parts[part] = {
-                    Size       = part.Size,
-                    CanCollide = part.CanCollide,
-                }
-            end
-        end
-
-        -- Apply GodMode
-        humanoid.HipHeight = 0.05
-
-        collision.Size       = GOD_COLLISION_SIZE
-        collision.CanCollide = true
-        if collisionCrouch and collisionCrouch:IsA("BasePart") then
-            collisionCrouch.Size       = GOD_COLLISION_SIZE
-            collisionCrouch.CanCollide = true
-        end
-
-        -- Disable CanCollide on everything else
-        for _, part in ipairs(character:GetDescendants()) do
-            if part:IsA("BasePart") and part ~= collision and part ~= collisionCrouch then
-                part.CanCollide = false
-            end
-        end
+        if not (humanoid and root and collision) then return end
+        root.CanCollide          = false
+        collision.Size           = Vector3.new(1, 0.1, 3)
+        collision.CanCollide     = true
+        collision.CollisionGroup = "PlayerCrouching"
+        humanoid.HipHeight       = 0
     end, "Apply GodMode")
 end
 
-local function restoreGodMode(character)
+local function restoreOriginalGodMode(character)
     safeCall(function()
-        if not godModeSaved.parts then return end
-
-        local humanoid = character:FindFirstChild("Humanoid")
-        if humanoid and godModeSaved.hipHeight then
-            humanoid.HipHeight = godModeSaved.hipHeight
-        end
-
-        for part, saved in pairs(godModeSaved.parts) do
-            if part and part.Parent then
-                part.Size       = saved.Size
-                part.CanCollide = saved.CanCollide
-            end
-        end
-
-        godModeSaved = {}
-    end, "Restore GodMode")
+        local humanoid  = character:FindFirstChild("Humanoid")
+        local root      = character:FindFirstChild("HumanoidRootPart")
+        local collision = character:FindFirstChild("Collision", true)
+        if not (humanoid and root and collision and godModeSaved.HipHeight) then return end
+        humanoid.HipHeight       = godModeSaved.HipHeight
+        root.CanCollide          = godModeSaved.RootCanCollide
+        root.CollisionGroup      = godModeSaved.RootCollisionGroup
+        collision.Size           = godModeSaved.CollisionSize
+        collision.CanCollide     = godModeSaved.CollisionCanCollide
+        collision.CanTouch       = godModeSaved.CollisionCanTouch
+        collision.CanQuery       = godModeSaved.CollisionCanQuery
+        collision.CollisionGroup = godModeSaved.CollisionCollisionGroup
+    end, "Restore Original GodMode")
 end
 
-local godModeAutoEnabled  = false
-local godModeDistanceLoop = nil
-local GODMODE_ENTITY_RANGE = 250
+local function teleportUp(character)
+    safeCall(function()
+        local root = character:FindFirstChild("HumanoidRootPart")
+        if root then root.CFrame = root.CFrame + Vector3.new(0, 3, 0) end
+    end, "Teleport Up")
+end
 
+local function startGodModeLoop(character)
+    safeCall(function()
+        if godModeConnection then godModeConnection:Disconnect() end
+        godModeConnection = RunService.Heartbeat:Connect(function()
+            if godModeEnabled then applyGodMode(character) end
+        end)
+    end, "Start GodMode Loop")
+end
+
+local function stopGodModeLoop()
+    safeCall(function()
+        if godModeConnection then
+            godModeConnection:Disconnect()
+            godModeConnection = nil
+        end
+    end, "Stop GodMode Loop")
+end
+
+local godModeAutoEnabled = false
+local godModeDistanceLoop
 local function enableGodMode()
     safeCall(function()
         local character = LocalPlayer.Character
         if not character or godModeEnabled then return end
+        saveOriginalGodMode(character)
         godModeEnabled = true
-        applyGodMode(character)
+        startGodModeLoop(character)
         Window:Notify({ Text = "GodMode Auto-Enabled (Entity nearby)", Duration = 2, Type = "Success" })
     end, "Enable GodMode")
 end
-
 local function disableGodMode()
     safeCall(function()
         local character = LocalPlayer.Character
         if not character or not godModeEnabled then return end
         godModeEnabled = false
-        restoreGodMode(character)
-        Window:Notify({ Text = "GodMode Auto-Disabled (Entity gone)", Duration = 2, Type = "Warning" })
+        stopGodModeLoop()
+        restoreOriginalGodMode(character)
+        teleportUp(character)
+        Window:Notify({ Text = "GodMode Auto-Disabled (All entities far)", Duration = 2, Type = "Warning" })
     end, "Disable GodMode")
 end
 
@@ -456,7 +467,7 @@ local function checkEntityDistance()
             local model = workspace:FindFirstChild(name)
             if model then
                 local part = model:FindFirstChildWhichIsA("BasePart")
-                if part and (hrp.Position - part.Position).Magnitude <= GODMODE_ENTITY_RANGE then
+                if part and (hrp.Position - part.Position).Magnitude <= 325 then
                     shouldEnable = true
                     break
                 end
@@ -473,12 +484,16 @@ end
 LocalPlayer.CharacterAdded:Connect(function(character)
     safeCall(function()
         if godModeEnabled then
-            godModeEnabled = false  -- reset so applyGodMode won't early-return
-            task.wait(0.5)
-            enableGodMode()
+            task.wait(0.1)
+            saveOriginalGodMode(character)
+            startGodModeLoop(character)
         end
     end, "Character Added - GodMode")
 end)
+
+-- ══════════════════════════════════════════════
+--  MAIN → ESSENTIALS TAB
+-- ══════════════════════════════════════════════
 
 EssentialsTab:Toggle("Auto GodMode", Settings.godMode, function(enabled)
     safeCall(function()
@@ -493,7 +508,7 @@ EssentialsTab:Toggle("Auto GodMode", Settings.godMode, function(enabled)
             if godModeEnabled then disableGodMode() end
         end
     end, "Auto GodMode Toggle")
-end, "Auto-enables GodMode when Rush/Ambush is within 250 studs")
+end, "Auto-enable GodMode when entities are within 325 studs")
 
 local doorReachEnabled  = false
 local doorReachLoop
@@ -530,7 +545,7 @@ local doorReachToggle = EssentialsTab:Toggle("Door Reach", Settings.doorReach, f
                             end
                         end
                     end, "Door Reach Loop")
-                    task.wait(0.01)
+                    task.wait(0.1)
                 end
             end)
         else
@@ -547,47 +562,50 @@ EssentialsTab:Slider("Door Reach Distance", 10, 75, Settings.doorReachDistance, 
 end, "Maximum distance to open doors")
 
 local maxSpeedValue    = currentFloor == "Mines" and 75 or 250
-local antiSpeedEnabled = false
+local antiSpeedEnabled = true   -- always on, no toggle
 local antiSpeedLoop
 local clonedCollision
-local antiSpeedToggle, antiSpeedToggleId = EssentialsTab:Toggle("AntiSpeed Bypass", Settings.antiSpeedBypass, function(enabled)
+
+-- AntiSpeed Bypass runs silently on load — no toggle needed
+local function startAntiSpeedBypass()
     safeCall(function()
-        antiSpeedEnabled          = enabled
-        Settings.antiSpeedBypass  = enabled
-        if enabled then
-            local Character   = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-            local CollisionPart = Character:WaitForChild("CollisionPart")
-            clonedCollision             = CollisionPart:Clone()
-            clonedCollision.Name        = "_CollisionClone"
-            clonedCollision.Massless    = true
-            clonedCollision.Parent      = Character
-            clonedCollision.CanCollide  = false
-            clonedCollision.CanQuery    = false
-            clonedCollision.CustomPhysicalProperties = PhysicalProperties.new(0.01, 0.7, 0, 1, 1)
-            antiSpeedLoop = task.spawn(function()
-                while antiSpeedEnabled do
-                    task.wait(0.23)
-                    safeCall(function()
-                        if clonedCollision then
-                            clonedCollision.Massless = false
-                            task.wait(0.23)
-                            local root = Character:FindFirstChild("HumanoidRootPart")
-                            if root and root.Anchored then
-                                clonedCollision.Massless = true
-                                task.wait(1)
-                            end
+        local Character     = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+        local CollisionPart = Character:WaitForChild("CollisionPart")
+        if clonedCollision then clonedCollision:Destroy(); clonedCollision = nil end
+        clonedCollision                          = CollisionPart:Clone()
+        clonedCollision.Name                     = "_CollisionClone"
+        clonedCollision.Massless                 = true
+        clonedCollision.Parent                   = Character
+        clonedCollision.CanCollide               = false
+        clonedCollision.CanQuery                 = false
+        clonedCollision.CustomPhysicalProperties = PhysicalProperties.new(0.01, 0.7, 0, 1, 1)
+        if antiSpeedLoop then task.cancel(antiSpeedLoop); antiSpeedLoop = nil end
+        antiSpeedLoop = task.spawn(function()
+            while antiSpeedEnabled do
+                task.wait(0.23)
+                safeCall(function()
+                    if clonedCollision then
+                        clonedCollision.Massless = false
+                        task.wait(0.23)
+                        local root = Character:FindFirstChild("HumanoidRootPart")
+                        if root and root.Anchored then
                             clonedCollision.Massless = true
+                            task.wait(1)
                         end
-                    end, "Anti Speed Loop")
-                end
-            end)
-        else
-            antiSpeedEnabled = false
-            if antiSpeedLoop then task.cancel(antiSpeedLoop); antiSpeedLoop = nil end
-            if clonedCollision then clonedCollision:Destroy(); clonedCollision = nil end
-        end
-    end, "AntiSpeed Bypass Toggle")
-end, "Required for Speed - bypasses anticheat")
+                        clonedCollision.Massless = true
+                    end
+                end, "Anti Speed Loop")
+            end
+        end)
+    end, "AntiSpeed Bypass Auto-Start")
+end
+
+-- Start immediately and re-start on respawn
+task.defer(startAntiSpeedBypass)
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(0.5)
+    startAntiSpeedBypass()
+end)
 
 local speedEnabled      = false
 local originalWalkSpeed = 16
@@ -595,12 +613,6 @@ local speedValue        = Settings.speedValue
 local speedLoop
 EssentialsTab:Toggle("Enable Speed", Settings.speed, function(enabled)
     safeCall(function()
-        if enabled and not antiSpeedEnabled then
-            Window:Notify({ Text = "Please enable AntiSpeed Bypass first!", Duration = 4, Type = "Warning" })
-            speedEnabled   = false
-            Settings.speed = false
-            return
-        end
         speedEnabled   = enabled
         Settings.speed = enabled
         if enabled then
@@ -639,7 +651,6 @@ EssentialsTab:Slider("Speed Value", 2, maxSpeedValue, math.min(Settings.speedVal
     end, "Speed Value Slider")
 end, "Set your desired walk speed")
 
--- Fullbright moved to Essentials (very commonly used)
 local fullbrightEnabled  = false
 local originalLighting   = {}
 local lightingConnection
@@ -677,6 +688,10 @@ EssentialsTab:Toggle("Fullbright", Settings.fullbright, function(enabled)
         end
     end, "Fullbright Toggle")
 end, "See clearly in dark areas")
+
+-- ══════════════════════════════════════════════
+--  MAIN → PROTECTION TAB
+-- ══════════════════════════════════════════════
 
 local spoofCrouchEnabled = false
 local spoofCrouchLoop
@@ -826,25 +841,33 @@ local function initHooks()
     local ok, err = pcall(function()
         local HideMonster = ReplicatedStorage:WaitForChild("RemotesFolder"):WaitForChild("HideMonster")
         local A90Remote   = ReplicatedStorage:WaitForChild("RemotesFolder"):WaitForChild("A90")
-        -- hookmetamethod is confirmed available by the UNC check
+        local hookfunc = hookfunction or replaceclosure or hookmetamethod
+        if not hookfunc then
+            warn("[ZeScript] No hook function found in this executor!")
+            return
+        end
+        print("[ZeScript] Using hook function:", hookfunc)
         local oldNamecall
-        oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
-            local method = getnamecallmethod()
-            if method == "FireServer" then
-                if antiHeartbeatEnabled and self == HideMonster then
-                    print("[HideMonster] Blocked death!")
-                    return
-                end
-                if antiA90Enabled and self == A90Remote then
-                    local args = {...}
-                    if args[1] == "moved" then
-                        print("[A90] Blocked death! Sending didnt instead")
-                        return oldNamecall(self, "didnt")
+        oldNamecall = hookfunc(
+            getrawmetatable(game).__namecall,
+            function(self, ...)
+                local method = getnamecallmethod()
+                if method == "FireServer" then
+                    if antiHeartbeatEnabled and self == HideMonster then
+                        print("[HideMonster] Blocked death!")
+                        return
+                    end
+                    if antiA90Enabled and self == A90Remote then
+                        local args = {...}
+                        if args[1] == "moved" then
+                            print("[A90] Blocked death! Sending didnt instead")
+                            return oldNamecall(self, "didnt")
+                        end
                     end
                 end
+                return oldNamecall(self, ...)
             end
-            return oldNamecall(self, ...)
-        end)
+        )
         hooksInitialized = true
         print("[ZeScript] Hooks initialized successfully!")
     end)
@@ -985,6 +1008,10 @@ LocalPlayer.CharacterAdded:Connect(function()
         disableFakeGKCamera()
     end)
 end)
+
+-- ══════════════════════════════════════════════
+--  EXPLOITS → UNIVERSAL TAB
+-- ══════════════════════════════════════════════
 
 local figureGodModeEnabled   = false
 local figureGodModeLoop      = nil
@@ -1299,7 +1326,7 @@ end
 setupPathfindNodes()
 
 task.spawn(function()
-    while true do task.wait(0.01); setupPathfindNodes() end
+    while true do task.wait(1); setupPathfindNodes() end
 end)
 
 local entityPathingToggle = UniversalTab:Toggle("Entity Pathing", false, function(enabled)
@@ -1360,8 +1387,6 @@ local autoFinishDailyToggle = UniversalTab:Toggle("Auto Finish Daily Run", false
     end, "Auto Finish Daily Run Toggle")
 end, "Automatically finds and teleports to the daily run exit")
 
-loadstring(game:HttpGet("https://raw.githubusercontent.com/ZeScript/ZeScripts/refs/heads/main/Debug"))()
-
 local anticheatManipEnabled  = false
 local anticheatManipLoop     = nil
 local isAnticheatKeyHeld     = false
@@ -1384,7 +1409,7 @@ local anticheatManipToggle = UniversalTab:Toggle("AntiCheat Manipulation (Hold T
         if enabled then
             anticheatManipLoop = task.spawn(function()
                 while anticheatManipEnabled do
-                    task.wait(0.00001)
+                    task.wait(0.03)
                     safeCall(function()
                         if isAnticheatKeyHeld and LocalPlayer.Character then
                             LocalPlayer.Character:PivotTo(LocalPlayer.Character:GetPivot() + workspace.CurrentCamera.CFrame.LookVector * Vector3.new(1, 0, 1) * -100)
@@ -1398,16 +1423,100 @@ local anticheatManipToggle = UniversalTab:Toggle("AntiCheat Manipulation (Hold T
     end, "AntiCheat Manipulation Toggle")
 end, "Uses the anticheat to teleport you forward — good for teleporting against tiny walls")
 
-local proximityReach      = Settings.proximityReach
-local autoProxiEnabled    = false
+-- ══════════════════════════════════════════════
+--  EXPLOITS → INTERACT TAB
+-- ══════════════════════════════════════════════
+
+local autoProxiEnabled   = false
 local autoProxiLoop
-local autoProxiInstant    = Settings.autoProxiInstant
-local autoProxiKey        = Enum.KeyCode[Settings.autoProxiKey] or Enum.KeyCode.R
-local isAutoProxiKeyHeld  = false
-local autoProxiCooldowns  = {}
+local autoProxiInstant   = Settings.autoProxiInstant
+local autoProxiKey       = Enum.KeyCode[Settings.autoProxiKey] or Enum.KeyCode.R
+local isAutoProxiKeyHeld = false
+local autoProxiCooldowns = {}
+
+-- Blacklist — never fire prompts whose ActionText contains these words
+local PROXI_BLACKLIST = { "close", "leave", "hide" }
+
+local function shouldInteract(prompt)
+    if not prompt or not prompt.Enabled then return false end
+    local actionText = prompt.ActionText and prompt.ActionText:lower() or ""
+    for _, word in ipairs(PROXI_BLACKLIST) do
+        if actionText:find(word, 1, true) then return false end
+    end
+    if actionText:find("exit", 1, true) and not actionText:find("door", 1, true) then
+        return false
+    end
+    return true
+end
+
+-- Returns the world position of a prompt's parent part (or nil)
+local function getPromptPosition(prompt)
+    local obj = prompt.Parent
+    if not obj then return nil end
+    if obj:IsA("BasePart") then return obj.Position end
+    -- Model or other — try GetPivot or first BasePart
+    local ok, pivot = pcall(function() return obj:GetPivot() end)
+    if ok and pivot then return pivot.Position end
+    local part = obj:FindFirstChildWhichIsA("BasePart", true)
+    return part and part.Position or nil
+end
+
+local function runAutoProxi()
+    safeCall(function()
+        local char = LocalPlayer.Character
+        if not char then return end
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if not hrp then return end
+        local playerPos = hrp.Position
+        local now = tick()
+
+        local sources = {}
+        local currentRooms = workspace:FindFirstChild("CurrentRooms")
+        if currentRooms then table.insert(sources, currentRooms) end
+        local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+        if playerGui then table.insert(sources, playerGui) end
+
+        for _, source in ipairs(sources) do
+            for _, obj in ipairs(source:GetDescendants()) do
+                if not obj:IsA("ProximityPrompt") then continue end
+                if not shouldInteract(obj) then continue end
+
+                local pos = getPromptPosition(obj)
+                local maxDist = (obj.MaxActivationDistance or 10) + 6
+                if pos and (playerPos - pos).Magnitude > maxDist then continue end
+
+                -- Per-prompt cooldown just to avoid double-firing the exact same prompt
+                -- within the same keypress burst — keep it tiny
+                local id = tostring(obj)
+                if autoProxiCooldowns[id] and (now - autoProxiCooldowns[id]) < 0.1 then continue end
+                autoProxiCooldowns[id] = now
+
+                if autoProxiInstant and obj.HoldDuration > 0 then
+                    local orig = obj.HoldDuration
+                    obj.HoldDuration = 0
+                    fireproximityprompt(obj)
+                    task.delay(0.05, function()
+                        if obj and obj.Parent then obj.HoldDuration = orig end
+                    end)
+                else
+                    fireproximityprompt(obj)
+                end
+            end
+        end
+
+        -- Prune stale entries
+        for id, t in pairs(autoProxiCooldowns) do
+            if now - t > 5 then autoProxiCooldowns[id] = nil end
+        end
+    end, "Run Auto Proxi")
+end
+
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     safeCall(function()
-        if input.KeyCode == autoProxiKey and not gameProcessed then isAutoProxiKeyHeld = true end
+        if input.KeyCode ~= autoProxiKey or gameProcessed then return end
+        isAutoProxiKeyHeld = true
+        -- Fire immediately on keydown so there's zero delay
+        if autoProxiEnabled then runAutoProxi() end
     end, "Input Began")
 end)
 
@@ -1417,83 +1526,28 @@ UserInputService.InputEnded:Connect(function(input, gameProcessed)
     end, "Input Ended")
 end)
 
-local function shouldInteract(prompt)
-    if not prompt or not prompt.Enabled then return false end
-    local actionText = (prompt.ActionText or ""):lower()
-    if actionText:find("close") then return false end
-    if actionText:find("leave") then return false end
-    if actionText:find("exit") and not actionText:find("door") then return false end
-    if actionText:find("hide") then return false end
-    return true
-end
-
-local function getAllProximityPrompts()
-    local prompts = {}
-    safeCall(function()
-        local currentRooms = workspace:FindFirstChild("CurrentRooms")
-        if currentRooms then
-            for _, prompt in pairs(currentRooms:GetDescendants()) do
-                if prompt:IsA("ProximityPrompt") then table.insert(prompts, prompt) end
-            end
-        end
-        local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
-        if playerGui then
-            for _, prompt in pairs(playerGui:GetDescendants()) do
-                if prompt:IsA("ProximityPrompt") then table.insert(prompts, prompt) end
-            end
-        end
-    end, "Get All Proximity Prompts")
-    return prompts
-end
-
-local function runAutoProxi()
-    safeCall(function()
-        local prompts = getAllProximityPrompts()
-        for _, prompt in pairs(prompts) do
-            if shouldInteract(prompt) then
-                local promptId = tostring(prompt:GetFullName())
-                local now      = tick()
-                if autoProxiCooldowns[promptId] and (now - autoProxiCooldowns[promptId]) < 0.1 then continue end
-                autoProxiCooldowns[promptId] = now
-                task.spawn(function()
-                    safeCall(function()
-                        if autoProxiInstant and prompt.HoldDuration > 0 then
-                            local originalHold    = prompt.HoldDuration
-                            prompt.HoldDuration   = 0
-                            fireproximityprompt(prompt)
-                            task.delay(0.05, function()
-                                if prompt and prompt.Parent then prompt.HoldDuration = originalHold end
-                            end)
-                        else
-                            fireproximityprompt(prompt)
-                        end
-                    end, "Auto Proxi - Fire Prompt")
-                end)
-            end
-        end
-        for id, time in pairs(autoProxiCooldowns) do
-            if tick() - time > 5 then autoProxiCooldowns[id] = nil end
-        end
-    end, "Run Auto Proxi")
-end
-
 local autoProxiToggle, autoProxiToggleId = InteractTab:Toggle("Auto Proxi (Hold R)", Settings.autoProxi, function(enabled)
     safeCall(function()
-        autoProxiEnabled    = enabled
-        Settings.autoProxi  = enabled
-        autoProxiCooldowns  = {}
+        autoProxiEnabled   = enabled
+        Settings.autoProxi = enabled
+        autoProxiCooldowns = {}
         if enabled then
             autoProxiLoop = task.spawn(function()
                 while autoProxiEnabled do
-                    if isAutoProxiKeyHeld then runAutoProxi() end
                     task.wait(0.05)
+                    -- While key is held, keep re-firing for new prompts that become valid
+                    -- (e.g. walking into range of a new item while holding R)
+                    if isAutoProxiKeyHeld then
+                        autoProxiCooldowns = {}  -- reset so held R always re-scans fresh
+                        runAutoProxi()
+                    end
                 end
             end)
         else
             if autoProxiLoop then task.cancel(autoProxiLoop); autoProxiLoop = nil end
         end
     end, "Auto Proxi Toggle")
-end, "Hold R to auto interact with prompts")
+end, "Hold R to auto interact with nearby prompts")
 
 InteractTab:Toggle("Instant Interact", Settings.autoProxiInstant, function(enabled)
     safeCall(function()
@@ -1509,6 +1563,13 @@ local autoProxiKeybind = InteractTab:Keybind("Auto Proxi Key", autoProxiKey, fun
     end, "Auto Proxi Keybind")
 end, "Key to hold for Auto Proxi")
 InteractTab:DependsOn(autoProxiKeybind, autoProxiToggleId)
+
+-- ══════════════════════════════════════════════
+--  FLOOR → HOTEL TAB  🏨  (only on Hotel floor)
+-- ══════════════════════════════════════════════
+
+if currentFloor == "Hotel" then
+local HotelTab = FloorCategory:CreateTab("Hotel", "🏨")
 
 local finishRoom100Enabled  = false
 local finishRoom100Loop     = nil
@@ -1574,7 +1635,7 @@ end, "Automatically completes the Room 100 electrical minigame")
 do
     local CODE_LENGTH        = 5
     local CODES_PER_BATCH    = 25
-    local SOLVER_DELAY       = 0.01
+    local SOLVER_DELAY       = 0.05
     local REQUIRED_DISTANCE  = 25
     local UPDATE_INTERVAL    = 0.5
     local room50SolverEnabled  = false
@@ -1706,7 +1767,7 @@ do
                     tryCode(code)
                     attemptCount = attemptCount + 1
                 end
-                if attemptCount % 1000 == 0 then
+                if attemptCount % 100 == 0 then
                     local elapsed = tick() - startTime
                     local rate    = attemptCount / elapsed
                     notify50(string.format("[Room 50]: Tried %d codes (%.0f codes/sec) | Hints: [%s]", attemptCount, rate, table.concat(currentHints, ", ")), 3, "Success")
@@ -1728,12 +1789,18 @@ do
             end
         end, "Room 50 Solver Toggle")
     end, "Auto-solves Room 50 code by randomly picking from hint numbers")
-end
+end -- end Room 50 do block
+end -- end Hotel floor if block
+
+-- ══════════════════════════════════════════════
+--  FLOOR → MINES TAB  ⛏️  (only on Mines floor)
+-- ══════════════════════════════════════════════
 
 local bypassEnabled = false
 local bypassLoop
 local ladderESP     = {}
-if currentFloor == "Mines" or currentFloor == "Unknown" then
+if currentFloor == "Mines" then
+local MinesTab = FloorCategory:CreateTab("Mines", "⛏️")
     local minesToggle = MinesTab:Toggle("Anticheat Bypass", Settings.minesAnticheat, function(enabled)
         safeCall(function()
             bypassEnabled          = enabled
@@ -1780,10 +1847,143 @@ if currentFloor == "Mines" or currentFloor == "Unknown" then
             end
         end, "Mines Anticheat Bypass Toggle")
     end, "Prevents ladder detection")
-else
-    MinesTab:Label("Mines floor not detected")
-    MinesTab:Label("Current floor: " .. currentFloor)
-end
+end -- end Mines floor if block
+
+-- ══════════════════════════════════════════════
+--  FLOOR → BACKDOOR TAB  🚪  (only on Backdoor floor)
+-- ══════════════════════════════════════════════
+
+if currentFloor == "Backdoor" then
+local BackdoorTab = FloorCategory:CreateTab("Backdoor", "🚪")
+    local timerNotifyEnabled = false
+    local timerNotifyLoop    = nil
+    local lastSeenMult       = math.huge
+
+    BackdoorTab:Toggle("Timer Notify", false, function(enabled)
+        safeCall(function()
+            timerNotifyEnabled = enabled
+
+            if enabled then
+                lastSeenMult = math.huge  -- reset tracker on enable
+
+                timerNotifyLoop = task.spawn(function()
+                    while timerNotifyEnabled do
+                        task.wait(0.25)  -- check 4× per second so no crossing is missed
+                        safeCall(function()
+                            local floorReplicated = ReplicatedStorage:FindFirstChild("FloorReplicated")
+                            if not floorReplicated then return end
+                            local digitalTimer = floorReplicated:FindFirstChild("DigitalTimer")
+                            if not digitalTimer then return end
+
+                            local rawValue    = digitalTimer.Value
+                            local currentMult = math.floor(rawValue / 5) * 5  -- snap down to nearest 5
+
+                            if currentMult ~= lastSeenMult then
+                                if currentMult < lastSeenMult then
+                                    -- crossed a 5-second boundary downward → notify
+                                    local notifType = "Success"
+                                    if currentMult <= 10 then
+                                        notifType = "Error"
+                                    elseif currentMult <= 25 then
+                                        notifType = "Warning"
+                                    end
+                                    Window:Notify({
+                                        Text     = "⏱ Time left: " .. tostring(currentMult),
+                                        Duration = 3,
+                                        Type     = notifType
+                                    })
+                                end
+                                -- always update regardless of direction (handles timer going UP)
+                                lastSeenMult = currentMult
+                            end
+                        end, "Timer Notify Loop")
+                    end
+                end)
+
+                Window:Notify({ Text = "Timer Notify enabled!", Duration = 2, Type = "Success" })
+            else
+                if timerNotifyLoop then task.cancel(timerNotifyLoop); timerNotifyLoop = nil end
+                lastSeenMult = math.huge
+                Window:Notify({ Text = "Timer Notify disabled.", Duration = 2, Type = "Warning" })
+            end
+        end, "Timer Notify Toggle")
+    end, "Notifies every time the Backdoor timer crosses a multiple of 5 seconds (works even when timer goes up)")
+end -- end Backdoor floor if block
+
+-- ══════════════════════════════════════════════
+--  FLOOR → GARDEN TAB  🌿  (only on Garden floor)
+-- ══════════════════════════════════════════════
+
+if currentFloor == "Garden" then
+local GardenTab = FloorCategory:CreateTab("Garden", "🌿")
+    if hookSupported then
+        local antiSurgeEnabled     = false
+        local surgeHookInitialized = false
+
+        GardenTab:Toggle("Anti Surge", false, function(enabled)
+            safeCall(function()
+                antiSurgeEnabled = enabled
+
+                -- Hook is set up once on first enable;
+                -- the antiSurgeEnabled flag acts as the live gate from then on.
+                if enabled and not surgeHookInitialized then
+                    local ok, err = pcall(function()
+                        local SurgeRemote = ReplicatedStorage
+                            :WaitForChild("RemotesFolder")
+                            :WaitForChild("SurgeRemote", 10)
+
+                        if not SurgeRemote then
+                            error("SurgeRemote not found in RemotesFolder")
+                        end
+
+                        local hookfunc = hookfunction or replaceclosure
+                        if not hookfunc then
+                            error("No hook function available on this executor")
+                        end
+
+                        local oldSurgeCall
+                        oldSurgeCall = hookfunc(
+                            getrawmetatable(game).__namecall,
+                            function(self, ...)
+                                local method = getnamecallmethod()
+                                if method == "FireServer"
+                                    and self == SurgeRemote
+                                    and antiSurgeEnabled
+                                then
+                                    return  -- silently block surge
+                                end
+                                return oldSurgeCall(self, ...)
+                            end
+                        )
+
+                        surgeHookInitialized = true
+                    end)
+
+                    if ok then
+                        Window:Notify({ Text = "✅ Anti Surge enabled!", Duration = 3, Type = "Success" })
+                    else
+                        antiSurgeEnabled = false  -- revert on failure
+                        Window:Notify({
+                            Text     = "❌ Anti Surge hook failed: " .. tostring(err),
+                            Duration = 6,
+                            Type     = "Error"
+                        })
+                        warn("[ZeScript] Anti Surge hook failed: " .. tostring(err))
+                    end
+                elseif not enabled then
+                    Window:Notify({ Text = "Anti Surge disabled.", Duration = 2, Type = "Warning" })
+                end
+            end, "Anti Surge Toggle")
+        end, "Blocks SurgeRemote FireServer calls on the Garden floor")
+
+    else
+        GardenTab:Label("❌ Anti Surge — requires hook support (unsupported executor)")
+    end
+end -- end Garden floor if block
+
+-- ══════════════════════════════════════════════
+--  VISUAL → ESP TAB
+-- ══════════════════════════════════════════════
 
 local espEnabled    = { Door = false, Objective = false, Entity = false }
 local espHighlights = {}
@@ -2004,6 +2204,10 @@ task.spawn(function()
     end
 end)
 
+-- ══════════════════════════════════════════════
+--  VISUAL → DISPLAY TAB
+-- ══════════════════════════════════════════════
+
 do
     local desiredFOV   = Settings.fov
     local fovConnection
@@ -2072,6 +2276,7 @@ local function destroyScript()
         for _, loop in ipairs(loops) do
             if loop then pcall(task.cancel, loop) end
         end
+        if godModeConnection then godModeConnection:Disconnect() end
         clearESP("Door"); clearESP("Objective"); clearESP("Entity")
         local Character = LocalPlayer and LocalPlayer.Character
         if Character then
@@ -2080,7 +2285,7 @@ local function destroyScript()
             local hrp = Character:FindFirstChild("HumanoidRootPart")
             if hrp then hrp.CustomPhysicalProperties = originalHrpProps end
             if clonedCollision then clonedCollision:Destroy() end
-            if godModeEnabled then restoreGodMode(Character) end
+            if godModeEnabled then restoreOriginalGodMode(Character) end
         end
         if fullbrightEnabled then
             local Lighting = game:GetService("Lighting")
@@ -2118,7 +2323,7 @@ end, "Reset all settings to default")
 SettingsCategory:Button("Hide UI", function()
     safeCall(function() Window:Hide() end, "Hide UI Button")
 end, "Hide UI - press toggle key to show")
-SettingsCategory:Label("ZeScript Doors v1.4 (Reorganized UI)")
+SettingsCategory:Label("ZeScript Doors v1.7")
 SettingsCategory:Label("Floor: " .. currentFloor)
 
 if Settings.autoLoad then
