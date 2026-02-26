@@ -95,6 +95,15 @@ local function detectFloor()
 end
 currentFloor = detectFloor()
 
+-- ══════════════════════════════════════════════════════════════
+--  CATEGORY & TAB LAYOUT
+--  Main     ⭐  →  Essentials 🔥  |  Protection 🛡️
+--  Exploits ⚡  →  Universal 🌍   |  Interact 🤝
+--  Floor    🏢  →  Tabs only appear for the detected floor
+--                  Hotel 🏨 | Mines ⛏️ | Backdoor 🚪 | Garden 🌿
+--  Visual   👁️  →  ESP 📍         |  Display 🎨
+--  Settings ⚙️
+-- ══════════════════════════════════════════════════════════════
 local MainCategory     = Window:CreateCategory("Main",     "⭐")
 local ExploitCategory  = Window:CreateCategory("Exploits", "⚡")
 local FloorCategory    = Window:CreateCategory("Floor",    "🏢")
@@ -1473,7 +1482,7 @@ local function runAutoProxi()
                 if not shouldInteract(obj) then continue end
 
                 local pos = getPromptPosition(obj)
-                local maxDist = (obj.MaxActivationDistance or 10) + 6
+                local maxDist = (obj.MaxActivationDistance or 10) + 4
                 if pos and (playerPos - pos).Magnitude > maxDist then continue end
 
                 -- Per-prompt cooldown just to avoid double-firing the exact same prompt
@@ -1486,7 +1495,7 @@ local function runAutoProxi()
                     local orig = obj.HoldDuration
                     obj.HoldDuration = 0
                     fireproximityprompt(obj)
-                    task.delay(0.05, function()
+                    task.delay(0.1, function()
                         if obj and obj.Parent then obj.HoldDuration = orig end
                     end)
                 else
@@ -1516,7 +1525,7 @@ UserInputService.InputEnded:Connect(function(input, gameProcessed)
         if input.KeyCode == autoProxiKey then isAutoProxiKeyHeld = false end
     end, "Input Ended")
 end)
-loadstring(game:HttpGet("https://raw.githubusercontent.com/ZeScript/ZeScripts/refs/heads/main/Debug"))()
+
 local autoProxiToggle, autoProxiToggleId = InteractTab:Toggle("Auto Proxi (Hold R)", Settings.autoProxi, function(enabled)
     safeCall(function()
         autoProxiEnabled   = enabled
@@ -1525,7 +1534,7 @@ local autoProxiToggle, autoProxiToggleId = InteractTab:Toggle("Auto Proxi (Hold 
         if enabled then
             autoProxiLoop = task.spawn(function()
                 while autoProxiEnabled do
-                    task.wait(0.05)
+                    task.wait(0.1)
                     -- While key is held, keep re-firing for new prompts that become valid
                     -- (e.g. walking into range of a new item while holding R)
                     if isAutoProxiKeyHeld then
@@ -1626,7 +1635,7 @@ end, "Automatically completes the Room 100 electrical minigame")
 do
     local CODE_LENGTH        = 5
     local CODES_PER_BATCH    = 25
-    local SOLVER_DELAY       = 0.05
+    local SOLVER_DELAY       = 0.01
     local REQUIRED_DISTANCE  = 25
     local UPDATE_INTERVAL    = 0.5
     local room50SolverEnabled  = false
@@ -1758,7 +1767,7 @@ do
                     tryCode(code)
                     attemptCount = attemptCount + 1
                 end
-                if attemptCount % 100 == 0 then
+                if attemptCount % 1000 == 0 then
                     local elapsed = tick() - startTime
                     local rate    = attemptCount / elapsed
                     notify50(string.format("[Room 50]: Tried %d codes (%.0f codes/sec) | Hints: [%s]", attemptCount, rate, table.concat(currentHints, ", ")), 3, "Success")
@@ -2314,7 +2323,7 @@ end, "Reset all settings to default")
 SettingsCategory:Button("Hide UI", function()
     safeCall(function() Window:Hide() end, "Hide UI Button")
 end, "Hide UI - press toggle key to show")
-SettingsCategory:Label("ZeScript Doors v1.7")
+SettingsCategory:Label("ZeScript Doors v1.7 (Performance + Whitelist)")
 SettingsCategory:Label("Floor: " .. currentFloor)
 
 if Settings.autoLoad then
