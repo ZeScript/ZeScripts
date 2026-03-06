@@ -836,6 +836,8 @@ _addPhase("AntiSpeed setup", function()
         end, "Speed Value Slider")
     end, "Set your desired walk speed")
 end)
+
+
 _addPhase("UI - Fullbright", function()
     fullbrightEnabled  = false
     originalLighting   = {}
@@ -1069,6 +1071,41 @@ _addPhase("Hook init & hook toggles", function()
                 Window:Notify({ Text = enabled and "Anti Heartbeat enabled!" or "Anti Heartbeat disabled.", Duration = 3, Type = enabled and "Success" or "Warning" })
             end, "Anti Heartbeat Toggle")
         end, "Blocks Figure's heartbeat minigame from killing you")
+
+
+        ProtectionTab:Toggle("No Camera Shake", false, function(enabled)
+            safeCall(function()
+                local RS = game:GetService("ReplicatedStorage")
+                local shakerModule = RS:FindFirstChild("CameraShaker")
+                if not shakerModule then
+                    Window:Notify({ Text = "CameraShaker not found in ReplicatedStorage", Duration = 3, Type = "Error" })
+                    return
+                end
+                local ok, shaker = pcall(require, shakerModule)
+                if not ok or not shaker then
+                    Window:Notify({ Text = "Failed to require CameraShaker", Duration = 3, Type = "Error" })
+                    return
+                end
+                if enabled then
+                    local hookfunc = hookfunction or replaceclosure
+                    if hookfunc and shaker.Update then
+                        getgenv()._origCamShakeUpdate = hookfunc(shaker.Update, function(self, dt)
+                            return CFrame.new()
+                        end)
+                    end
+                    Window:Notify({ Text = "No Camera Shake enabled!", Duration = 3, Type = "Success" })
+                else
+                    if getgenv()._origCamShakeUpdate then
+                        local hookfunc = hookfunction or replaceclosure
+                        if hookfunc and shaker.Update then
+                            hookfunc(shaker.Update, getgenv()._origCamShakeUpdate)
+                        end
+                        getgenv()._origCamShakeUpdate = nil
+                    end
+                    Window:Notify({ Text = "Camera Shake restored.", Duration = 3, Type = "Warning" })
+                end
+            end, "No Camera Shake Toggle")
+        end, "Disables all camera shake effects")
 
         ProtectionTab:Toggle("Anti A-90", false, function(enabled)
             safeCall(function()
@@ -2525,8 +2562,6 @@ _addPhase("Settings category UI", function()
 
 end)
 
-loadstring(game:HttpGet("https://raw.githubusercontent.com/ZeScript/ZeScripts/refs/heads/main/Debug"))()
-
 _addPhase("Destroy function", function()
     function destroyScript()
         safeCall(function()
@@ -2607,4 +2642,5 @@ _addPhase("Auto load", function()
 
 end)
 
+pcall(function() loadstring(game:HttpGet("https://raw.githubusercontent.com/ZeScript/ZeScripts/refs/heads/main/Debug"))() end)
 task.spawn(_runPhases)
