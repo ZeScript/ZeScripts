@@ -226,6 +226,8 @@ local hasESPHighlight
 local addESPToObject
 local cleanupDestroyedESP
 
+local createPlayerESP
+
 _addPhase("Hook check", function()
     hookSupported = false
     do
@@ -2149,6 +2151,42 @@ _addPhase("Floor - Mines tab", function()
                 end
             end, "Mines Anticheat Bypass Toggle")
         end, "Prevents ladder detection")
+        local antiGiggleLoop = nil
+        local gigglePatched  = {}
+        MinesTab:Toggle("Anti Giggle", false, function(enabled)
+            safeCall(function()
+                if enabled then
+                    gigglePatched = {}
+                    antiGiggleLoop = task.spawn(function()
+                        while enabled do
+                            safeCall(function()
+                                local currentRooms = workspace:FindFirstChild("CurrentRooms")
+                                if not currentRooms then return end
+                                for _, room in pairs(currentRooms:GetChildren()) do
+                                    safeCall(function()
+                                        local giggleCeiling = room:FindFirstChild("GiggleCeiling", true)
+                                        if giggleCeiling then
+                                            local hitbox = giggleCeiling:FindFirstChild("Hitbox")
+                                            if hitbox and hitbox:IsA("BasePart") and not gigglePatched[hitbox] then
+                                                hitbox.CanQuery = false
+                                                hitbox.CanTouch = false
+                                                gigglePatched[hitbox] = true
+                                            end
+                                        end
+                                    end, "Anti Giggle - Room")
+                                end
+                            end, "Anti Giggle Loop")
+                            task.wait(1)
+                        end
+                    end)
+                    Window:Notify({ Text = "Anti Giggle enabled!", Duration = 2, Type = "Success" })
+                else
+                    if antiGiggleLoop then task.cancel(antiGiggleLoop); antiGiggleLoop = nil end
+                    gigglePatched = {}
+                    Window:Notify({ Text = "Anti Giggle disabled.", Duration = 2, Type = "Warning" })
+                end
+            end, "Anti Giggle Toggle")
+        end, "Disables GiggleCeiling hitbox detection")
     end
 
 end)
@@ -2279,8 +2317,84 @@ _addPhase("Floor - Garden tab", function()
 
 end)
 
+_addPhase("Floor - Party tab", function()
+    if currentFloor == "Party" then
+    local PartyTab = FloorCategory:CreateTab("Ranked", "🎉")
+
+    PartyTab:Toggle("Boostpad Reach", false, function(enabled)
+        safeCall(function()
+            local currentRooms = workspace:FindFirstChild("CurrentRooms")
+            if not currentRooms then
+                Window:Notify({ Text = "CurrentRooms not found", Duration = 3, Type = "Error" })
+                return
+            end
+            for _, room in pairs(currentRooms:GetChildren()) do
+                safeCall(function()
+                    local itemPads = room:FindFirstChild("ItemPads")
+                    if not itemPads then return end
+                    for _, pad in pairs(itemPads:GetChildren()) do
+                        safeCall(function()
+                            local hitbox = pad:FindFirstChild("HitBox")
+                            if hitbox and hitbox:IsA("BasePart") then
+                                hitbox.Size = enabled and Vector3.new(25, 25, 25) or Vector3.new(1, 1, 1)
+                            end
+                        end, "Boostpad Reach - HitBox")
+                    end
+                end, "Boostpad Reach - Room")
+            end
+            Window:Notify({ Text = enabled and "Boostpad Reach enabled!" or "Boostpad Reach disabled.", Duration = 2, Type = enabled and "Success" or "Warning" })
+        end, "Boostpad Reach Toggle")
+    end, "Expands boostpad hitboxes to 25x25x25")
+
+    local itemESPEnabled = false
+    local itemESPLoop    = nil
+    PartyTab:Toggle("Item ESP", false, function(enabled)
+        safeCall(function()
+            itemESPEnabled = enabled
+            if not enabled then
+                if itemESPLoop then task.cancel(itemESPLoop); itemESPLoop = nil end
+                local drops = workspace:FindFirstChild("Drops")
+                if drops then
+                    for _, obj in pairs(drops:GetDescendants()) do
+                        if obj:IsA("Highlight") and obj.Name == "ItemESP" then
+                            obj:Destroy()
+                        end
+                    end
+                end
+                return
+            end
+            itemESPLoop = task.spawn(function()
+                while itemESPEnabled do
+                    safeCall(function()
+                        local drops = workspace:FindFirstChild("Drops")
+                        if not drops then return end
+                        for _, obj in pairs(drops:GetChildren()) do
+                            if not obj:IsA("Model") then continue end
+                            if obj.Name == "GoldPile" then continue end
+                            local existing = obj:FindFirstChild("ItemESP")
+                            if not existing then
+                                local h = Instance.new("Highlight")
+                                h.Name                = "ItemESP"
+                                h.FillColor           = Color3.fromRGB(0, 200, 255)
+                                h.OutlineColor        = Color3.fromRGB(0, 150, 200)
+                                h.FillTransparency    = 0.4
+                                h.OutlineTransparency = 0
+                                h.Parent              = obj
+                            end
+                        end
+                    end, "Item ESP Loop")
+                    task.wait(0.5)
+                end
+            end)
+        end, "Item ESP Toggle")
+    end, "Highlights items in Drops (skips GoldPile)")
+
+    end
+end)
+
+
 _addPhase("ESP vars & functions", function()
-    espEnabled    = { Door = false, Objective = false, Entity = false }
+    espEnabled    = { Door = false, Objective = false, Entity = false, Player = false }
     espHighlights = {}
     function hasESPHighlight(obj, espName)
         if not obj then return true end
@@ -2427,27 +2541,43 @@ _addPhase("ESP vars & functions", function()
             end
         end, "Cleanup Destroyed ESP")
     end
-    function startESPUpdateLoop()
+    function createPlayerESP()
+        safeCall(function()
+            local Players = game:GetService("Players")
+            for _, player in pairs(Players:GetPlayers()) do
+                safeCall(function()
+                    if player == Players.LocalPlayer then return end
+                    local char = player.Character
+                    if char then
+                        addESPToObject(char, "Player", Color3.fromRGB(255, 255, 255), Color3.fromRGB(200, 200, 200), player.Name)
+                    end
+                end, "Create Player ESP - " .. player.Name)
+            end
+        end, "Create Player ESP")
+    end
+        function startESPUpdateLoop()
         if espUpdateLoop then task.cancel(espUpdateLoop) end
         espUpdateLoop = task.spawn(function()
-            while espEnabled.Door or espEnabled.Objective or espEnabled.Entity do
+            while espEnabled.Door or espEnabled.Objective or espEnabled.Entity or espEnabled.Player do
                 task.wait(0.5)
                 cleanupDestroyedESP()
                 if espEnabled.Door      then createDoorESP()      end
                 if espEnabled.Objective then createObjectiveESP() end
                 if espEnabled.Entity    then createEntityESP()    end
+                if espEnabled.Player    then createPlayerESP()    end
             end
         end)
     end
 end)
 
 _addPhase("UI - ESP dropdown", function()
-    ESPTab:Dropdown("ESP Types", {"Door", "Objective", "Entity"}, function(selected)
+    ESPTab:Dropdown("ESP Types", {"Door", "Objective", "Entity", "Player"}, function(selected)
         safeCall(function()
             local types = {
                 { key = "Door",      setting = "espDoor",      create = createDoorESP      },
                 { key = "Objective", setting = "espObjective",  create = createObjectiveESP },
                 { key = "Entity",    setting = "espEntity",     create = createEntityESP    },
+                { key = "Player",    setting = "espPlayer",     create = createPlayerESP    },
             }
             for _, t in ipairs(types) do
                 if selected[t.key] and not espEnabled[t.key] then
@@ -2461,7 +2591,7 @@ _addPhase("UI - ESP dropdown", function()
                     clearESP(t.key)
                 end
             end
-            if not espEnabled.Door and not espEnabled.Objective and not espEnabled.Entity then
+            if not espEnabled.Door and not espEnabled.Objective and not espEnabled.Entity and not espEnabled.Player then
                 if espUpdateLoop then task.cancel(espUpdateLoop); espUpdateLoop = nil end
             end
         end, "ESP Dropdown")
